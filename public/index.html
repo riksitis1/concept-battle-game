@@ -532,11 +532,14 @@
     <div id="screen-battle" class="screen flex-1 flex flex-col p-3 gap-3 min-h-0">
       <div class="flex items-center justify-between text-xs px-3 py-2 rounded-xl shrink-0" style="background: rgba(20, 20, 50, 0.4); backdrop-filter: blur(8px); border: 1px solid rgba(99, 102, 241, 0.05);">
         <span class="font-bold tracking-wide" style="background: linear-gradient(135deg, #818cf8, #c4b5fd); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">⚔️ <span id="battle-genre">???</span></span>
-        <span class="flex items-center gap-2">
-          <span class="text-gray-500 font-medium">Round</span>
-          <span id="battle-round" class="font-bold text-indigo-200">1</span>
+        <span class="flex items-center gap-3">
+          <span class="flex items-center gap-2">
+            <span class="text-gray-500 font-medium">Round</span>
+            <span id="battle-round" class="font-bold text-indigo-200">1</span>
+          </span>
+          <span id="battle-countdown" class="font-bold font-mono countdown text-sm text-indigo-200">30s</span>
         </span>
-        <span id="battle-countdown" class="font-bold font-mono countdown text-sm text-indigo-200">30s</span>
+        <button id="btn-resign" onclick="resignBattle()" class="text-xs font-medium px-2.5 py-1.5 rounded-lg transition-all" style="color: rgba(239, 68, 68, 0.6); background: rgba(239, 68, 68, 0.06); border: 1px solid rgba(239, 68, 68, 0.08);" onmouseover="this.style.background='rgba(239,68,68,0.12)'; this.style.color='#ef4444'" onmouseout="this.style.background='rgba(239,68,68,0.06)'; this.style.color='rgba(239,68,68,0.6)'">✋ Resign</button>
       </div>
 
       <div class="battle-main flex-1 flex items-stretch gap-3 min-h-0">
@@ -1315,6 +1318,23 @@
         const d = await res.json();
         alert(d.error || 'Failed to submit');
       }
+    }
+
+    // ============================================================
+    // RESIGN
+    // ============================================================
+    async function resignBattle() {
+      if (!confirm('Are you sure you want to resign? You will lose this battle.')) return;
+      const token = await getToken();
+      if (!token) return;
+      const btn = document.getElementById('btn-resign');
+      btn.disabled = true;
+      btn.textContent = 'Resigning...';
+      await fetch('/api/resign', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: roomCode })
+      });
     }
 
     // ============================================================

@@ -848,6 +848,22 @@ app.get('/api/game-state/:code', async (req, res) => {
   res.json(sanitizeRoom(room, user.uid));
 });
 
+// --- Game: Resign ---
+app.post('/api/resign', async (req, res) => {
+  const user = verifyToken(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  const { code } = req.body;
+  const room = rooms.get(code?.toUpperCase());
+  if (!room) return res.status(404).json({ error: 'Room not found' });
+  const isP1 = room.p1?.userId === user.uid;
+  const isP2 = room.p2?.userId === user.uid;
+  if (!isP1 && !isP2) return res.status(403).json({ error: 'Not in this room' });
+  if (!isInBattlePhase(room)) return res.status(400).json({ error: 'Not in an active battle' });
+  const loserSide = isP1 ? 'p1' : 'p2';
+  await forfeitPlayer(room, loserSide);
+  res.json({ success: true });
+});
+
 // --- Health Check ---
 app.get('/api/health', (req, res) => res.json({ status: 'ok', ai: !!openai }));
 
