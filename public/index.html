@@ -86,15 +86,15 @@
       animation: shake 0.5s ease-in-out;
     }
     .arena-emoji {
-      font-size: 3.5rem;
+      font-size: 5rem;
       position: absolute;
       transition: all 0.5s ease-in-out;
       z-index: 5;
     }
     .fight-cloud-inner {
       animation: cloudPulse 0.9s ease-out forwards;
-      width: 120px;
-      height: 120px;
+      width: 160px;
+      height: 160px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -297,7 +297,7 @@
         </div>
 
         <!-- Center Arena -->
-        <div id="arena-center" class="relative w-40 flex flex-col items-center justify-center bg-[#1a1a3e]/40 rounded-2xl border border-indigo-800/10 overflow-hidden shrink-0">
+        <div id="arena-center" class="relative flex-[1.8] flex flex-col items-center justify-center bg-[#1a1a3e]/40 rounded-2xl border border-indigo-800/10 overflow-hidden shrink-0 min-w-[200px]">
           <div id="arena-emoji-p1" class="arena-emoji" style="left:10px">❓</div>
           <div id="arena-emoji-p2" class="arena-emoji" style="right:10px">❓</div>
           <div id="fight-cloud" class="absolute inset-0 flex items-center justify-center pointer-events-none z-10 hidden bg-black/30 rounded-2xl">
@@ -896,8 +896,13 @@
       const side = playerSide;
       if (!side) return;
       const input = document.getElementById(`battle-${side}-input`);
+      const btn = document.getElementById(`battle-${side}-submit`);
       const entity = input.value.trim();
       if (!entity) return;
+      // Disable immediately to prevent double-submit
+      input.disabled = true;
+      btn.disabled = true;
+      btn.textContent = 'Submitting...';
       const token = await getToken();
       if (!token) return;
       const res = await fetch('/api/submit-entity', {
@@ -905,10 +910,11 @@
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: roomCode, entity })
       });
-      if (res.ok) {
-        input.disabled = true;
-        document.getElementById(`battle-${side}-submit`).disabled = true;
-      } else {
+      if (!res.ok) {
+        // Re-enable on failure
+        input.disabled = false;
+        btn.disabled = false;
+        btn.textContent = 'Submit';
         const d = await res.json();
         alert(d.error || 'Failed to submit');
       }
@@ -989,7 +995,7 @@
 
       // Phase 4 — Impact (2500–3500ms): dash and shake
       const isP1 = state.me?.side === 'p1';
-      const dashDir = p1Wins ? '130px' : '-130px';
+      const dashDir = p1Wins ? '200px' : '-200px';
       winnerEmoji.style.setProperty('--dash-target', dashDir);
       winnerEmoji.classList.add('dash-attack');
       arena.classList.add('shake');

@@ -73,7 +73,7 @@ function createRoom(type, p1Data) {
   const room = {
     code, type,
     phase: type === 'private' ? 'genre_select' : 'submitting',
-    genre: null,
+    genre: type === 'public' ? GENRES[Math.floor(Math.random() * GENRES.length)] : null,
     p1: { ...p1Data, hp: 100, entity: null, ready: false, entityHidden: true, emoji: null },
     p2: null,
     currentRound: 0,
