@@ -266,6 +266,7 @@ Return ONLY valid JSON (no markdown, no extra text). This will be parsed program
 STRICT RULES:
 - ENTITY VALIDATION: Each entity MUST be a real, coherent concept or thing. If an entity is gibberish, nonsense, a random phrase (like "bradar what is this"), or not an actual thing, DISQUALIFY that player: they lose, take 40 damage, deal 0 counter-damage, and the description should be humorously dismissive.
 - GENRE CHECK: If an entity does NOT clearly belong to the "${genre}" genre, DISQUALIFY that player: they lose, take 40 damage, deal 0 counter-damage, and the description should be humorously dismissive.
+- NSFW / INAPPROPRIATE CONTENT: If an entity contains sexual, violent, hateful, or otherwise inappropriate content, IMMEDIATELY DISQUALIFY that player: they lose, take 40 damage, deal 0 counter-damage, and the description must say their submission was inappropriate and removed. Set player1Emoji to "🔞" for that player. NEVER describe the inappropriate content in the description — just say it was inappropriate.
 - TIES: If both entities are equally matched (same power level, identical, or neither clearly beats the other), set winner to "tie", damage to 0, and counterDamage to 0. Example: cat vs cat is a tie.
 - POWER DIFFERENCE: If one entity is only slightly stronger than the other, keep damage low (10-15) and counterDamage 0-5. If there's a clear power gap, damage can be 16-30. Disqualifications use 40.
 - EMOJIS: Pick a single creative emoji that best represents each entity. For example, "dragon" → "🐉", "water droplet" → "💧", "laser gun" → "🔫".
@@ -349,6 +350,14 @@ async function applyBattleResult(room, data) {
     damage, counterDamage, winnerHp: winner.hp, loserHp: loser.hp,
     description: data.description || 'An epic battle ensued!',
   };
+  // Censor entities disqualified for NSFW/inappropriate content (40 damage, 0 counter)
+  const loserDisqualified = damage >= 40 && counterDamage === 0;
+  const winnerDisqualified = counterDamage >= 40 && damage === 0;
+  if (loserDisqualified || data.player1Emoji === '🔞' || data.player2Emoji === '🔞') {
+    if ((p1Wins && loserDisqualified) || data.player2Emoji === '🔞') logEntry.p2Entity = '[REDACTED]';
+    if ((!p1Wins && loserDisqualified) || data.player1Emoji === '🔞') logEntry.p1Entity = '[REDACTED]';
+    if (winnerDisqualified) { if (p1Wins) logEntry.p1Entity = '[REDACTED]'; else logEntry.p2Entity = '[REDACTED]'; }
+  }
 
   if (loser.hp <= 0) {
     room.phase = 'game_over';
@@ -463,10 +472,16 @@ app.post('/api/find-match', async (req, res) => {
   const user = verifyToken(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   const { username, elo } = await getUserData(user.uid);
-  // Check if already in a room
+  // Check if already in an active room (skip finished games)
   for (const room of rooms.values()) {
-    if (room.p1?.userId === user.uid || room.p2?.userId === user.uid) {
+    if ((room.p1?.userId === user.uid || room.p2?.userId === user.uid) && room.phase !== 'game_over') {
       return res.json({ roomCode: room.code });
+    }
+  }
+  // Clean up any stale rooms where this user was (game_over or abandoned)
+  for (const [code, room] of rooms) {
+    if ((room.p1?.userId === user.uid || room.p2?.userId === user.uid) && room.phase === 'game_over') {
+      rooms.delete(code);
     }
   }
   // Find an open room, or create one
@@ -505,6 +520,20 @@ app.post('/api/join-room', async (req, res) => {
   const { username, elo } = await getUserData(user.uid);
   room.p2 = { userId: user.uid, username, elo, hp: 100, entity: null, ready: false, entityHidden: true, emoji: null };
   room.phase = 'genre_select';
+  res.json({ success: true });
+});
+
+// --- Room: Leave (abandon any room) ---
+app.post('/api/leave-room', (req, res) => {
+  const user = verifyToken(req);
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+  for (const [code, room] of rooms.entries()) {
+    if (room.p1?.userId === user.uid || room.p2?.userId === user.uid) {
+      clearTimeout(room.roundTimer); clearTimeout(room.advanceTimer);
+      rooms.delete(code);
+      return res.json({ success: true });
+    }
+  }
   res.json({ success: true });
 });
 

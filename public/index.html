@@ -1217,13 +1217,14 @@
       document.getElementById('gameover-icon').textContent = iWon ? '🏆' : '💀';
       document.getElementById('gameover-title').textContent = iWon ? 'Victory!' : 'Defeated';
       let details = `${me?.username || 'You'}: ${me?.hp || 0} HP &nbsp;|&nbsp; ${opp?.username || 'Opponent'}: ${opp?.hp || 0} HP`;
-      // Show elo change if available (last log entry)
+      // Update profile elo from result and show elo change
       if (state.battleLog && state.battleLog.length > 0) {
         const last = state.battleLog[state.battleLog.length - 1];
         if (last.eloChange) {
           const ec = last.eloChange;
           const myChange = ec.winner.username === me?.username ? ec.winner : ec.loser;
           const oppChange = ec.winner.username === opp?.username ? ec.winner : ec.loser;
+          if (currentProfile) currentProfile.elo = myChange.newElo;
           details += `<br><span class="text-indigo-300 text-sm mt-2">${ec.winner.username}: ${ec.winner.oldElo} → ${ec.winner.newElo} (+${ec.winner.newElo - ec.winner.oldElo})</span>`;
           details += `<br><span class="text-gray-400 text-sm">${ec.loser.username}: ${ec.loser.oldElo} → ${ec.loser.newElo} (${ec.loser.newElo - ec.loser.oldElo})</span>`;
         }
@@ -1232,14 +1233,11 @@
     }
 
     async function backToLobby() {
-      roomCode = null;
-      lastPhase = null;
-      lastLogLen = 0;
-      isAnimating = false;
-      playerSide = null;
-      // Refresh profile to get updated elo
       const token = await getToken();
       if (token) {
+        // Leave/abandon old room on server
+        await fetch('/api/leave-room', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+        // Refresh profile to get updated elo
         try {
           const res = await fetch('/api/profile', {
             headers: { Authorization: `Bearer ${token}` }
@@ -1247,6 +1245,11 @@
           if (res.ok) currentProfile = await res.json();
         } catch {}
       }
+      roomCode = null;
+      lastPhase = null;
+      lastLogLen = 0;
+      isAnimating = false;
+      playerSide = null;
       showScreen('screen-lobby');
       renderLobby();
     }
