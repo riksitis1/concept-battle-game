@@ -107,6 +107,8 @@ function sanitizeRoom(room, uid) {
     currentRound: room.currentRound,
     battleLog: room.battleLog.map(e => ({ ...e, eloChange: e.eloChange ? { ...e.eloChange } : undefined })),
     turnStartTime: room.turnStartTime,
+    serverTime: Date.now(),
+    timeRemaining: room.turnStartTime ? Math.max(0, Math.ceil(30 - (Date.now() - room.turnStartTime) / 1000)) : 30,
     me: mySide ? {
       side: mySide, userId: room[mySide].userId, username: room[mySide].username,
       hp: room[mySide].hp, elo: room[mySide].elo, ready: room[mySide].ready,

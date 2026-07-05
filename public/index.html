@@ -439,6 +439,7 @@
     let pollingInterval = null;
     let countdownInterval = null;
     let isAnimating = false;
+    let pendingGameOverState = null;
     let lastPhase = null;
     let lastLogLen = 0;
     let turnStartTime = 0;
@@ -835,7 +836,13 @@
           // stay on battle — animation will play
           break;
         case 'game_over':
-          showGameOver(state);
+          stopAllPolling();
+          // If there's a new log entry to animate, defer game over until animation finishes
+          if (state.battleLog && state.battleLog.length > lastLogLen) {
+            pendingGameOverState = state;
+          } else {
+            showGameOver(state);
+          }
           break;
         default:
           // waiting phase — already on waiting-room screen
@@ -846,10 +853,14 @@
     // ============================================================
     // COUNTDOWN
     // ============================================================
+    let countdownElapsed = 0;
     function updateCountdown(state) {
-      if (!state.turnStartTime) return;
-      const elapsed = (Date.now() - state.turnStartTime) / 1000;
-      const remaining = Math.max(0, Math.ceil(30 - elapsed));
+      if (state.timeRemaining !== undefined) {
+        countdownElapsed = 30 - state.timeRemaining;
+      } else if (!state.turnStartTime) return;
+      const serverElapsed = state.timeRemaining !== undefined ? 30 - state.timeRemaining : (Date.now() - state.turnStartTime) / 1000;
+      const sincePoll = (Date.now() - (state.serverTime || Date.now())) / 1000;
+      const remaining = Math.max(0, Math.ceil(30 - serverElapsed - Math.min(2, sincePoll)));
       document.getElementById('battle-countdown').textContent = remaining + 's';
       if (remaining <= 5) {
         document.getElementById('battle-countdown').classList.add('text-red-400');
@@ -1203,6 +1214,10 @@
 
       vsText.classList.remove('hidden');
       isAnimating = false;
+      if (pendingGameOverState) {
+        showGameOver(pendingGameOverState);
+        pendingGameOverState = null;
+      }
     }
 
     // ============================================================
@@ -1249,6 +1264,7 @@
       lastPhase = null;
       lastLogLen = 0;
       isAnimating = false;
+      pendingGameOverState = null;
       playerSide = null;
       showScreen('screen-lobby');
       renderLobby();
