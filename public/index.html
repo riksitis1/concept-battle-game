@@ -479,6 +479,7 @@
         showScreen('screen-auth');
         return;
       }
+      // Try to get full profile, fall back to saved username
       try {
         const res = await fetch('/api/profile', {
           headers: { Authorization: `Bearer ${currentToken}` }
@@ -492,30 +493,15 @@
           renderLobby();
           return;
         }
-      } catch {
-        // Server might be cold-starting — retry after delay
-      }
-      // Token invalid or server unreachable: retry once after 3s, then give up
-      try {
-        await new Promise(r => setTimeout(r, 3000));
-        const res2 = await fetch('/api/profile', {
-          headers: { Authorization: `Bearer ${currentToken}` }
-        });
-        if (res2.ok) {
-          currentProfile = await res2.json();
-          document.getElementById('nav-username').textContent = currentProfile.username || 'Player';
-          document.getElementById('nav-username').classList.remove('hidden');
-          document.getElementById('btn-logout').classList.remove('hidden');
-          showScreen('screen-lobby');
-          renderLobby();
-          return;
-        }
       } catch {}
-      localStorage.removeItem('prompt_clash_token');
-      currentToken = null;
-      document.getElementById('nav-username').classList.add('hidden');
-      document.getElementById('btn-logout').classList.add('hidden');
-      showScreen('screen-auth');
+      // Profile fetch failed — use saved username, go to lobby anyway
+      const savedName = localStorage.getItem('prompt_clash_username') || 'Player';
+      currentProfile = { uid: '', username: savedName, elo: 1000, gamesPlayed: 0, gamesWon: 0 };
+      document.getElementById('nav-username').textContent = savedName;
+      document.getElementById('nav-username').classList.remove('hidden');
+      document.getElementById('btn-logout').classList.remove('hidden');
+      showScreen('screen-lobby');
+      renderLobby();
     }
 
     async function login() {
@@ -534,7 +520,13 @@
         currentToken = data.token;
         localStorage.setItem('prompt_clash_token', currentToken);
         localStorage.setItem('prompt_clash_username', username);
-        initAuth();
+        // Build profile from login data — go straight to lobby
+        currentProfile = { uid: data.uid, username: data.username, elo: 1000, avatarColor: avatarStyle(data.username) };
+        document.getElementById('nav-username').textContent = currentProfile.username;
+        document.getElementById('nav-username').classList.remove('hidden');
+        document.getElementById('btn-logout').classList.remove('hidden');
+        showScreen('screen-lobby');
+        renderLobby();
       } catch (e) { showAuthError(e.message); }
     }
 
@@ -556,7 +548,13 @@
         currentToken = data.token;
         localStorage.setItem('prompt_clash_token', currentToken);
         localStorage.setItem('prompt_clash_username', username);
-        initAuth();
+        // Build profile from register data — go straight to lobby
+        currentProfile = { uid: data.uid, username: data.username, elo: 1000, avatarColor: avatarStyle(data.username) };
+        document.getElementById('nav-username').textContent = currentProfile.username;
+        document.getElementById('nav-username').classList.remove('hidden');
+        document.getElementById('btn-logout').classList.remove('hidden');
+        showScreen('screen-lobby');
+        renderLobby();
       } catch (e) { showAuthError(e.message); }
     }
 
