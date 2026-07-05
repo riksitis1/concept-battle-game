@@ -1,43 +1,53 @@
 const express = require('express');
 const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const admin = require('firebase-admin');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'prompt-clash-dev-secret-key-change-in-production';
+const DATA_DIR = path.join(__dirname, 'data');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
 
-// --- Firebase Admin Init ---
-const firebaseCred = {
-  projectId: process.env.FIREBASE_PROJECT_ID,
-  privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-  clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-};
-const firebaseEnabled = firebaseCred.projectId && firebaseCred.privateKey && firebaseCred.clientEmail;
-if (firebaseEnabled) {
-  admin.initializeApp({ credential: admin.credential.cert(firebaseCred) });
+// ============================================================
+// FILE STORE — persists user data to data/users.json
+// ============================================================
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, '{}', 'utf-8');
+
+function loadUsers() {
+  try { return JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8')); }
+  catch { return {}; }
 }
-const db = firebaseEnabled ? admin.firestore() : null;
-const FieldValue = db ? admin.firestore.FieldValue : null;
 
-// --- Gemini Init ---
+function saveUsers(users) {
+  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf-8');
+}
+
+// ============================================================
+// Gemini Init
+// ============================================================
 const genAI = process.env.GEMINI_API_KEY
   ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
   : null;
 const model = genAI ? genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' }) : null;
 
-// --- Express Setup ---
+// ============================================================
+// Express Setup
+// ============================================================
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// --- In-Memory State ---
+// ============================================================
+// In-Memory State (rooms are ephemeral — not saved to disk)
+// ============================================================
 const rooms = new Map();
 const matchQueue = [];
-const matchedMap = {}; // { [userId]: roomCode }
-const memoryUsers = {}; // fallback user store when Firestore is unavailable
+const matchedMap = {};
 const GENRES = ['Animals', 'Machines', 'Mythical Creatures', 'Elements', 'Cosmic'];
 const ROUND_TIMEOUT = 30000;
 const AUTO_ADVANCE_DELAY = 6000;
@@ -50,12 +60,8 @@ const ELO_K = 48;
 function verifyToken(req) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-  try {
-    const decoded = jwt.verify(authHeader.split(' ')[1], JWT_SECRET);
-    return decoded;
-  } catch {
-    return null;
-  }
+  try { return jwt.verify(authHeader.split(' ')[1], JWT_SECRET); }
+  catch { return null; }
 }
 
 function generateRoomCode() {
@@ -65,18 +71,15 @@ function generateRoomCode() {
 function createRoom(type, p1Data) {
   const code = generateRoomCode();
   const room = {
-    code,
-    type,
+    code, type,
     phase: type === 'private' ? 'genre_select' : 'submitting',
     genre: null,
     p1: { ...p1Data, hp: 100, entity: null, ready: false, entityHidden: true, emoji: null },
     p2: null,
     currentRound: 0,
     battleLog: [],
-    roundTimer: null,
-    advanceTimer: null,
-    lastEntityP1: null,
-    lastEntityP2: null,
+    roundTimer: null, advanceTimer: null,
+    lastEntityP1: null, lastEntityP2: null,
     turnStartTime: Date.now(),
   };
   rooms.set(code, room);
@@ -92,53 +95,34 @@ function avatarColor(str) {
 
 function sanitizeRoom(room, uid) {
   if (!room) return null;
-  const isP1 = room.p1 && room.p1.userId === uid;
-  const isP2 = room.p2 && room.p2.userId === uid;
+  const isP1 = room.p1?.userId === uid;
+  const isP2 = room.p2?.userId === uid;
   const mySide = isP1 ? 'p1' : isP2 ? 'p2' : null;
-  const opponentSide = isP1 ? 'p2' : isP2 ? 'p1' : null;
-  const opponent = opponentSide ? room[opponentSide] : null;
-
+  const oppSide = isP1 ? 'p2' : isP2 ? 'p1' : null;
+  const opponent = oppSide ? room[oppSide] : null;
   return {
-    code: room.code,
-    type: room.type,
-    phase: room.phase,
-    genre: room.genre,
+    code: room.code, type: room.type, phase: room.phase, genre: room.genre,
     currentRound: room.currentRound,
     battleLog: room.battleLog.map(e => ({ ...e })),
     turnStartTime: room.turnStartTime,
-    me: mySide
-      ? {
-          side: mySide,
-          userId: room[mySide].userId,
-          username: room[mySide].username,
-          hp: room[mySide].hp,
-          elo: room[mySide].elo,
-          ready: room[mySide].ready,
-          entityHidden: room[mySide].entityHidden,
-          avatarColor: avatarColor(room[mySide].username),
-        }
-      : null,
-    opponent: opponent
-      ? {
-          side: opponentSide,
-          userId: opponent.userId,
-          username: opponent.username,
-          hp: opponent.hp,
-          elo: opponent.elo,
-          ready: opponent.ready,
-          entityHidden: opponent.entityHidden,
-          avatarColor: avatarColor(opponent.username),
-        }
-      : null,
+    me: mySide ? {
+      side: mySide, userId: room[mySide].userId, username: room[mySide].username,
+      hp: room[mySide].hp, elo: room[mySide].elo, ready: room[mySide].ready,
+      entityHidden: room[mySide].entityHidden, avatarColor: avatarColor(room[mySide].username),
+    } : null,
+    opponent: opponent ? {
+      side: oppSide, userId: opponent.userId, username: opponent.username,
+      hp: opponent.hp, elo: opponent.elo, ready: opponent.ready,
+      entityHidden: opponent.entityHidden, avatarColor: avatarColor(opponent.username),
+    } : null,
   };
 }
 
 function calculateElo(ratingA, ratingB, winA) {
   const expectedA = 1 / (1 + Math.pow(10, (ratingB - ratingA) / 400));
-  const scoreA = winA ? 1 : 0;
   return {
-    newA: Math.round(ratingA + ELO_K * (scoreA - expectedA)),
-    newB: Math.round(ratingB + ELO_K * ((1 - scoreA) - (1 - expectedA))),
+    newA: Math.round(ratingA + ELO_K * ((winA ? 1 : 0) - expectedA)),
+    newB: Math.round(ratingB + ELO_K * (((winA ? 0 : 1)) - (1 - expectedA))),
   };
 }
 
@@ -146,27 +130,56 @@ function checkMatchmaking() {
   if (matchQueue.length < 2) return null;
   const p1 = matchQueue.shift();
   const p2 = matchQueue.shift();
-  const room = createRoom('public', {
-    userId: p1.userId,
-    username: p1.username,
-    elo: p1.elo,
-  });
-  room.p2 = {
-    userId: p2.userId,
-    username: p2.username,
-    elo: p2.elo,
-    hp: 100,
-    entity: null,
-    ready: false,
-    entityHidden: true,
-    emoji: null,
-  };
-  // Notify both players
+  const room = createRoom('public', { userId: p1.userId, username: p1.username, elo: p1.elo });
+  room.p2 = { userId: p2.userId, username: p2.username, elo: p2.elo, hp: 100, entity: null, ready: false, entityHidden: true, emoji: null };
   matchedMap[p1.userId] = room.code;
   matchedMap[p2.userId] = room.code;
   room.phase = 'submitting';
   startRoundTimer(room);
   return room;
+}
+
+// ============================================================
+// User data helpers (backed by JSON file)
+// ============================================================
+
+function findUserByUsername(username) {
+  const users = loadUsers();
+  return Object.entries(users).find(([, u]) => u.username === username);
+}
+
+function getUserById(uid) {
+  const users = loadUsers();
+  return users[uid] || null;
+}
+
+function createUser(uid, username, hash) {
+  const users = loadUsers();
+  users[uid] = { username, password: hash, elo: 1000, gamesPlayed: 0, gamesWon: 0 };
+  saveUsers(users);
+}
+
+function updateUserElo(uid, eloDelta) {
+  const users = loadUsers();
+  if (users[uid]) {
+    users[uid].elo = eloDelta.newElo;
+    users[uid].gamesPlayed = (users[uid].gamesPlayed || 0) + 1;
+    if (eloDelta.isWinner) users[uid].gamesWon = (users[uid].gamesWon || 0) + 1;
+    saveUsers(users);
+  }
+}
+
+async function getUserProfile(uid) {
+  const user = getUserById(uid);
+  if (!user) return null;
+  const { password, ...safe } = user;
+  return { uid, ...safe, avatarColor: avatarColor(safe.username) };
+}
+
+async function getUserData(uid) {
+  const user = getUserById(uid);
+  if (user) return { username: user.username, elo: user.elo || 1000 };
+  return { username: 'Player', elo: 1000 };
 }
 
 // ============================================================
@@ -178,14 +191,8 @@ function startRoundTimer(room) {
   room.turnStartTime = Date.now();
   room.roundTimer = setTimeout(() => {
     if (room.phase !== 'submitting') return;
-    if (!room.p1.ready) {
-      room.p1.entity = '(disqualified - timeout)';
-      room.p1.ready = true;
-    }
-    if (!room.p2.ready) {
-      room.p2.entity = '(disqualified - timeout)';
-      room.p2.ready = true;
-    }
+    if (!room.p1.ready) { room.p1.entity = '(disqualified - timeout)'; room.p1.ready = true; }
+    if (!room.p2.ready) { room.p2.entity = '(disqualified - timeout)'; room.p2.ready = true; }
     resolveBattle(room);
   }, ROUND_TIMEOUT);
 }
@@ -227,33 +234,18 @@ RULES:
     if (model) {
       const result = await model.generateContent(prompt);
       const text = result.response.text();
-      const cleaned = text
-        .replace(/```json\s*/gi, '')
-        .replace(/```\s*/g, '')
-        .trim();
+      const cleaned = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
       data = JSON.parse(cleaned);
     } else {
-      // Fallback for when no API key is set
-      data = {
-        winner: Math.random() < 0.5 ? 'player1' : 'player2',
-        player1Emoji: '⚔️',
-        player2Emoji: '⚔️',
-        damage: 20,
-        counterDamage: 10,
-        description:
-          'The arena shakes as both entities collide! With no AI judge available, the battle is decided by fate.',
-      };
+      data = { winner: Math.random() < 0.5 ? 'player1' : 'player2', player1Emoji: '⚔️', player2Emoji: '⚔️', damage: 20, counterDamage: 10, description: 'With no AI judge available, the battle is decided by fate.' };
     }
 
     const p1Wins = data.winner === 'player1';
     const loser = p1Wins ? room.p2 : room.p1;
     const winner = p1Wins ? room.p1 : room.p2;
-    let damage = Math.min(40, Math.max(10, data.damage));
-    let counterDamage = Math.min(20, Math.max(0, data.counterDamage));
+    const damage = Math.min(40, Math.max(10, data.damage));
+    const counterDamage = Math.min(20, Math.max(0, data.counterDamage));
 
-    // Ensure correct direction: damage goes to the loser (not the disqualified)
-    // If a player is disqualified, they take 40, deal 0.
-    // Our prompt already handles this, but let's be safe
     loser.hp -= damage;
     winner.hp -= counterDamage;
     if (loser.hp < 0) loser.hp = 0;
@@ -267,40 +259,27 @@ RULES:
     const logEntry = {
       round: ++room.currentRound,
       winner: p1Wins ? 'player1' : 'player2',
-      winnerUsername: winner.username,
-      loserUsername: loser.username,
-      player1Emoji: data.player1Emoji || '❓',
-      player2Emoji: data.player2Emoji || '❓',
-      p1Entity: room.lastEntityP1,
-      p2Entity: room.lastEntityP2,
-      damage,
-      counterDamage,
-      winnerHp: winner.hp,
-      loserHp: loser.hp,
-      description:
-        data.description || 'An epic battle ensued between the two concepts!',
+      winnerUsername: winner.username, loserUsername: loser.username,
+      player1Emoji: data.player1Emoji || '❓', player2Emoji: data.player2Emoji || '❓',
+      p1Entity: room.lastEntityP1, p2Entity: room.lastEntityP2,
+      damage, counterDamage, winnerHp: winner.hp, loserHp: loser.hp,
+      description: data.description || 'An epic battle ensued!',
     };
     room.battleLog.push(logEntry);
 
-    // Clear round state
-    room.p1.entity = null;
-    room.p2.entity = null;
-    room.p1.ready = false;
-    room.p2.ready = false;
-    room.p1.entityHidden = true;
-    room.p2.entityHidden = true;
+    room.p1.entity = null; room.p2.entity = null;
+    room.p1.ready = false; room.p2.ready = false;
+    room.p1.entityHidden = true; room.p2.entityHidden = true;
 
-    // Check game over
     if (loser.hp <= 0) {
       room.phase = 'game_over';
       clearTimeout(room.roundTimer);
       clearTimeout(room.advanceTimer);
-      await updateEloAfterGame(room, winner, loser, p1Wins ? winner.userId : loser.userId);
+      await updateEloAfterGame(room, winner, loser);
       return;
     }
 
     room.phase = 'round_result';
-
     clearTimeout(room.advanceTimer);
     room.advanceTimer = setTimeout(() => {
       if (room.phase === 'game_over') return;
@@ -310,30 +289,19 @@ RULES:
   } catch (err) {
     console.error('Gemini error:', err);
     const logEntry = {
-      round: ++room.currentRound,
-      winner: 'player1',
-      winnerUsername: room.p1.username,
-      loserUsername: room.p2.username,
-      player1Emoji: '⚔️',
-      player2Emoji: '⚔️',
-      p1Entity: room.p1.entity,
-      p2Entity: room.p2.entity,
-      damage: 20,
-      counterDamage: 10,
-      winnerHp: room.p1.hp - 10,
-      loserHp: room.p2.hp - 20,
-      description:
-        'The AI judge encountered an error. Both sides exchange inconclusive blows.',
+      round: ++room.currentRound, winner: 'player1',
+      winnerUsername: room.p1.username, loserUsername: room.p2.username,
+      player1Emoji: '⚔️', player2Emoji: '⚔️',
+      p1Entity: room.p1.entity, p2Entity: room.p2.entity,
+      damage: 20, counterDamage: 10, winnerHp: room.p1.hp - 10, loserHp: room.p2.hp - 20,
+      description: 'The AI judge encountered an error. Both sides exchange inconclusive blows.',
     };
-    room.p1.hp -= 10;
-    room.p2.hp -= 20;
+    room.p1.hp -= 10; room.p2.hp -= 20;
     if (room.p1.hp < 0) room.p1.hp = 0;
     if (room.p2.hp < 0) room.p2.hp = 0;
     room.battleLog.push(logEntry);
-    room.p1.entity = null;
-    room.p2.entity = null;
-    room.p1.ready = false;
-    room.p2.ready = false;
+    room.p1.entity = null; room.p2.entity = null;
+    room.p1.ready = false; room.p2.ready = false;
     room.phase = 'round_result';
     clearTimeout(room.advanceTimer);
     room.advanceTimer = setTimeout(() => {
@@ -348,75 +316,37 @@ RULES:
 // ELO UPDATE
 // ============================================================
 
-async function updateEloAfterGame(room, winner, loser, winnerUserId) {
+async function updateEloAfterGame(room, winner, loser) {
   try {
-    let wElo = 1000, lElo = 1000;
-    if (db) {
-      const winnerRef = db.collection('users').doc(winner.userId);
-      const loserRef = db.collection('users').doc(loser.userId);
-      const [wDoc, lDoc] = await Promise.all([winnerRef.get(), loserRef.get()]);
-      wElo = wDoc.exists ? (wDoc.data().elo || 1000) : 1000;
-      lElo = lDoc.exists ? (lDoc.data().elo || 1000) : 1000;
-      const result = calculateElo(wElo, lElo, true);
-      await Promise.all([
-        winnerRef.update({ elo: result.newA, gamesPlayed: FieldValue.increment(1), gamesWon: FieldValue.increment(1) }),
-        loserRef.update({ elo: result.newB, gamesPlayed: FieldValue.increment(1) }),
-      ]);
-      room.eloChange = {
-        winner: { username: winner.username, oldElo: wElo, newElo: result.newA },
-        loser: { username: loser.username, oldElo: lElo, newElo: result.newB },
-      };
-    } else {
-      const wMem = getMemoryUser(winner.userId);
-      const lMem = getMemoryUser(loser.userId);
-      wElo = wMem ? wMem.elo : 1000;
-      lElo = lMem ? lMem.elo : 1000;
-      const result = calculateElo(wElo, lElo, true);
-      if (wMem) { wMem.elo = result.newA; wMem.gamesPlayed = (wMem.gamesPlayed || 0) + 1; wMem.gamesWon = (wMem.gamesWon || 0) + 1; }
-      if (lMem) { lMem.elo = result.newB; lMem.gamesPlayed = (lMem.gamesPlayed || 0) + 1; }
-      room.eloChange = {
-        winner: { username: winner.username, oldElo: wElo, newElo: result.newA },
-        loser: { username: loser.username, oldElo: lElo, newElo: result.newB },
-      };
-    }
-  } catch (e) {
-    console.error('Elo update error:', e);
-  }
+    const wUser = getUserById(winner.userId);
+    const lUser = getUserById(loser.userId);
+    const wElo = wUser ? wUser.elo : 1000;
+    const lElo = lUser ? lUser.elo : 1000;
+    const result = calculateElo(wElo, lElo, true);
+    updateUserElo(winner.userId, { newElo: result.newA, isWinner: true });
+    updateUserElo(loser.userId, { newElo: result.newB, isWinner: false });
+    room.eloChange = {
+      winner: { username: winner.username, oldElo: wElo, newElo: result.newA },
+      loser: { username: loser.username, oldElo: lElo, newElo: result.newB },
+    };
+  } catch (e) { console.error('Elo update error:', e); }
 }
 
 // ============================================================
 // ROUTES
 // ============================================================
 
-// --- In-memory user helpers ---
-function findMemoryUser(username) {
-  return Object.values(memoryUsers).find(u => u.username === username);
-}
-
-function getMemoryUser(uid) {
-  return memoryUsers[uid] || null;
-}
-
 // --- Auth: Register ---
-app.post('/api/register', async (req, res) => {
+app.post('/api/register', (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
   if (username.length < 2) return res.status(400).json({ error: 'Username must be at least 2 characters' });
   if (password.length < 4) return res.status(400).json({ error: 'Password must be at least 4 characters' });
   try {
+    if (findUserByUsername(username)) return res.status(409).json({ error: 'Username already taken' });
     const uid = uuidv4();
     const hash = bcrypt.hashSync(password, 10);
-    if (db) {
-      const existing = await db.collection('users').where('username', '==', username).get();
-      if (!existing.empty) return res.status(409).json({ error: 'Username already taken' });
-      await db.collection('users').doc(uid).set({
-        username, password: hash, elo: 1000, gamesPlayed: 0, gamesWon: 0,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-    } else {
-      if (findMemoryUser(username)) return res.status(409).json({ error: 'Username already taken' });
-      memoryUsers[uid] = { username, password: hash, elo: 1000, gamesPlayed: 0, gamesWon: 0 };
-    }
+    createUser(uid, username, hash);
     const token = jwt.sign({ uid, username }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, uid, username });
   } catch (e) {
@@ -426,28 +356,18 @@ app.post('/api/register', async (req, res) => {
 });
 
 // --- Auth: Login ---
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
   try {
-    let docId, userData;
-    if (db) {
-      const snapshot = await db.collection('users').where('username', '==', username).get();
-      if (snapshot.empty) return res.status(401).json({ error: 'Invalid username or password' });
-      const doc = snapshot.docs[0];
-      docId = doc.id;
-      userData = doc.data();
-    } else {
-      const user = findMemoryUser(username);
-      if (!user) return res.status(401).json({ error: 'Invalid username or password' });
-      docId = Object.keys(memoryUsers).find(k => memoryUsers[k] === user);
-      userData = user;
-    }
+    const entry = findUserByUsername(username);
+    if (!entry) return res.status(401).json({ error: 'Invalid username or password' });
+    const [uid, userData] = entry;
     if (!bcrypt.compareSync(password, userData.password)) {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
-    const token = jwt.sign({ uid: docId, username: userData.username }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, uid: docId, username: userData.username });
+    const token = jwt.sign({ uid, username: userData.username }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({ token, uid, username: userData.username });
   } catch (e) {
     console.error('Login error:', e);
     res.status(500).json({ error: 'Login failed' });
@@ -459,85 +379,54 @@ app.get('/api/profile', async (req, res) => {
   const user = verifyToken(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   try {
-    if (db) {
-      const doc = await db.collection('users').doc(user.uid).get();
-      if (!doc.exists) return res.status(404).json({ error: 'User not found' });
-      const { password, ...safe } = doc.data();
-      return res.json({ uid: user.uid, ...safe, avatarColor: avatarColor(safe.username) });
-    }
-    const memUser = getMemoryUser(user.uid);
-    if (!memUser) return res.status(404).json({ error: 'User not found' });
-    const { password, ...safe } = memUser;
-    res.json({ uid: user.uid, ...safe, avatarColor: avatarColor(safe.username) });
+    const profile = await getUserProfile(user.uid);
+    if (!profile) return res.status(404).json({ error: 'User not found' });
+    res.json(profile);
   } catch (e) {
     console.error('Profile error:', e);
     res.status(500).json({ error: 'Failed to load profile' });
   }
 });
 
-async function getUserData(uid) {
-  if (db) {
-    const doc = await db.collection('users').doc(uid).get();
-    if (doc.exists) return { username: doc.data().username, elo: doc.data().elo || 1000 };
-  } else {
-    const u = getMemoryUser(uid);
-    if (u) return { username: u.username, elo: u.elo || 1000 };
-  }
-  return { username: 'Player', elo: 1000 };
-}
-
 // --- Queue: Join ---
 app.post('/api/join-queue', async (req, res) => {
-  const user = await verifyToken(req);
+  const user = verifyToken(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
-  const uid = user.uid;
-  const { username, elo } = await getUserData(uid);
-
-  if (matchQueue.find((u) => u.userId === uid)) {
-    return res.json({ status: 'already_in_queue' });
-  }
-
-  matchQueue.push({ userId: uid, username, elo, joinedAt: Date.now() });
+  const { username, elo } = await getUserData(user.uid);
+  if (matchQueue.find(u => u.userId === user.uid)) return res.json({ status: 'already_in_queue' });
+  matchQueue.push({ userId: user.uid, username, elo, joinedAt: Date.now() });
   const room = checkMatchmaking();
-  if (room) {
-    return res.json({ status: 'matched', roomCode: room.code });
-  }
+  if (room) return res.json({ status: 'matched', roomCode: room.code });
   res.json({ status: 'queued' });
 });
 
 // --- Queue: Leave ---
-app.post('/api/leave-queue', async (req, res) => {
-  const user = await verifyToken(req);
+app.post('/api/leave-queue', (req, res) => {
+  const user = verifyToken(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
-  const idx = matchQueue.findIndex((u) => u.userId === user.uid);
+  const idx = matchQueue.findIndex(u => u.userId === user.uid);
   if (idx >= 0) matchQueue.splice(idx, 1);
   delete matchedMap[user.uid];
   res.json({ success: true });
 });
 
 // --- Queue: Status ---
-app.get('/api/queue-status', async (req, res) => {
-  const user = await verifyToken(req);
+app.get('/api/queue-status', (req, res) => {
+  const user = verifyToken(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
-  const uid = user.uid;
-
-  if (matchedMap[uid]) {
-    const code = matchedMap[uid];
-    delete matchedMap[uid];
+  if (matchedMap[user.uid]) {
+    const code = matchedMap[user.uid];
+    delete matchedMap[user.uid];
     return res.json({ status: 'matched', roomCode: code });
   }
-
-  const idx = matchQueue.findIndex((u) => u.userId === uid);
-  if (idx >= 0) {
-    return res.json({ status: 'queued', position: idx + 1 });
-  }
-
+  const idx = matchQueue.findIndex(u => u.userId === user.uid);
+  if (idx >= 0) return res.json({ status: 'queued', position: idx + 1 });
   res.json({ status: 'none' });
 });
 
 // --- Room: Create Private ---
 app.post('/api/create-room', async (req, res) => {
-  const user = await verifyToken(req);
+  const user = verifyToken(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   const { username, elo } = await getUserData(user.uid);
   const room = createRoom('private', { userId: user.uid, username, elo });
@@ -546,53 +435,40 @@ app.post('/api/create-room', async (req, res) => {
 
 // --- Room: Join Private ---
 app.post('/api/join-room', async (req, res) => {
-  const user = await verifyToken(req);
+  const user = verifyToken(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   const { code } = req.body;
   if (!code) return res.status(400).json({ error: 'Missing code' });
   const room = rooms.get(code.toUpperCase());
   if (!room) return res.status(404).json({ error: 'Room not found' });
   if (room.p2) return res.status(400).json({ error: 'Room is full' });
-  if (room.p1.userId === user.uid)
-    return res.status(400).json({ error: 'Cannot join your own room' });
+  if (room.p1.userId === user.uid) return res.status(400).json({ error: 'Cannot join your own room' });
   const { username, elo } = await getUserData(user.uid);
-  room.p2 = {
-    userId: user.uid,
-    username,
-    elo,
-    hp: 100,
-    entity: null,
-    ready: false,
-    entityHidden: true,
-    emoji: null,
-  };
+  room.p2 = { userId: user.uid, username, elo, hp: 100, entity: null, ready: false, entityHidden: true, emoji: null };
   room.phase = 'genre_select';
   res.json({ success: true });
 });
 
-// --- Room: My Active (for matched players) ---
-app.get('/api/my-active-room', async (req, res) => {
-  const user = await verifyToken(req);
+// --- Room: My Active ---
+app.get('/api/my-active-room', (req, res) => {
+  const user = verifyToken(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
-  const uid = user.uid;
-  // Check matchedMap first
-  if (matchedMap[uid]) {
-    const code = matchedMap[uid];
-    delete matchedMap[uid];
+  if (matchedMap[user.uid]) {
+    const code = matchedMap[user.uid];
+    delete matchedMap[user.uid];
     return res.json({ code });
   }
-  // Search all rooms
   for (const room of rooms.values()) {
-    if (room.p1?.userId === uid || room.p2?.userId === uid) {
+    if (room.p1?.userId === user.uid || room.p2?.userId === user.uid) {
       return res.json({ code: room.code });
     }
   }
   res.status(404).json({ error: 'No active room' });
 });
 
-// --- Game: Lock Genre (P1 only) ---
-app.post('/api/lock-genre', async (req, res) => {
-  const user = await verifyToken(req);
+// --- Game: Lock Genre ---
+app.post('/api/lock-genre', (req, res) => {
+  const user = verifyToken(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   const { code, genre } = req.body;
   const room = rooms.get(code?.toUpperCase());
@@ -611,46 +487,31 @@ app.get('/api/random-genre', (req, res) => {
 });
 
 // --- Game: Submit Entity ---
-app.post('/api/submit-entity', async (req, res) => {
-  const user = await verifyToken(req);
+app.post('/api/submit-entity', (req, res) => {
+  const user = verifyToken(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   const { code, entity } = req.body;
-  if (!entity || entity.trim().length === 0) {
-    return res.status(400).json({ error: 'Entity is required' });
-  }
+  if (!entity || !entity.trim()) return res.status(400).json({ error: 'Entity is required' });
   const room = rooms.get(code?.toUpperCase());
   if (!room) return res.status(404).json({ error: 'Room not found' });
-  if (room.phase !== 'submitting') {
-    return res.status(400).json({ error: 'Not in submission phase' });
-  }
-
+  if (room.phase !== 'submitting') return res.status(400).json({ error: 'Not in submission phase' });
   const isP1 = room.p1.userId === user.uid;
-  const isP2 = room.p2 && room.p2.userId === user.uid;
+  const isP2 = room.p2?.userId === user.uid;
   if (!isP1 && !isP2) return res.status(403).json({ error: 'Not in this room' });
-
   if (isP1) {
     if (room.p1.ready) return res.status(400).json({ error: 'Already submitted' });
-    room.p1.entity = entity.trim();
-    room.p1.ready = true;
-    room.p1.entityHidden = false;
+    room.p1.entity = entity.trim(); room.p1.ready = true; room.p1.entityHidden = false;
   } else {
     if (room.p2.ready) return res.status(400).json({ error: 'Already submitted' });
-    room.p2.entity = entity.trim();
-    room.p2.ready = true;
-    room.p2.entityHidden = false;
+    room.p2.entity = entity.trim(); room.p2.ready = true; room.p2.entityHidden = false;
   }
-
-  if (room.p1.ready && room.p2.ready) {
-    clearTimeout(room.roundTimer);
-    resolveBattle(room);
-  }
-
+  if (room.p1.ready && room.p2.ready) { clearTimeout(room.roundTimer); resolveBattle(room); }
   res.json({ success: true });
 });
 
-// --- Game: Get State (Polling) ---
-app.get('/api/game-state/:code', async (req, res) => {
-  const user = await verifyToken(req);
+// --- Game: Get State ---
+app.get('/api/game-state/:code', (req, res) => {
+  const user = verifyToken(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   const room = rooms.get(req.params.code?.toUpperCase());
   if (!room) return res.status(404).json({ error: 'Room not found' });
@@ -661,7 +522,7 @@ app.get('/api/game-state/:code', async (req, res) => {
 });
 
 // --- Health Check ---
-app.get('/api/health', (req, res) => res.json({ status: 'ok', gemini: !!model, firebase: !!db }));
+app.get('/api/health', (req, res) => res.json({ status: 'ok', gemini: !!model }));
 
 // ============================================================
 // START
@@ -671,5 +532,5 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Prompt Clash server running on port ${PORT}`);
   console.log(`  Gemini: ${model ? 'configured' : 'NOT configured (set GEMINI_API_KEY)'}`);
-  console.log(`  Firebase: ${db ? 'configured' : 'NOT configured (set FIREBASE_* vars)'}`);
+  console.log(`  Users stored at: ${USERS_FILE}`);
 });
