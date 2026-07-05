@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const OpenAI = require('openai');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -30,13 +30,12 @@ function saveUsers(users) {
 }
 
 // ============================================================
-// Gemini Init
+// AI Init (OpenAI)
 // ============================================================
-const GEMINI_KEY = process.env.GEMINI_API_KEY || process.env.gemini_api_key || null;
-if (GEMINI_KEY) console.log('Gemini API key found, enabling AI judge');
-else console.log('No Gemini API key — battles will use fallback results');
-const genAI = GEMINI_KEY ? new GoogleGenerativeAI(GEMINI_KEY) : null;
-const model = genAI ? genAI.getGenerativeModel({ model: 'gemini-2.0-flash' }) : null;
+const OPENAI_KEY = process.env.OPENAI_API_KEY || null;
+if (OPENAI_KEY) console.log('OpenAI API key found, enabling AI judge (gpt-4o-mini)');
+else console.log('No OpenAI API key — battles will use fallback results');
+const openai = OPENAI_KEY ? new OpenAI({ apiKey: OPENAI_KEY }) : null;
 const battleCache = new Map();
 
 // ============================================================
@@ -230,7 +229,7 @@ function startRoundTimer(room) {
 }
 
 // ============================================================
-// GEMINI BATTLE RESOLUTION
+// AI BATTLE RESOLUTION (OpenAI)
 // ============================================================
 
 async function resolveBattle(room) {
@@ -274,21 +273,26 @@ STRICT RULES:
 - Be creative, thematic, and fair.`;
 
   let data;
-  if (model) {
+  if (openai) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const result = await model.generateContent(prompt);
-        const text = result.response.text();
-        const jsonMatch = text.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
-        const start = jsonMatch.indexOf('{');
-        const end = jsonMatch.lastIndexOf('}');
-        const cleaned = start >= 0 && end > start ? jsonMatch.slice(start, end + 1) : jsonMatch;
-        data = JSON.parse(cleaned);
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: 'You are an AI battle judge. Always respond in valid JSON.' },
+            { role: 'user', content: prompt }
+          ],
+          response_format: { type: 'json_object' }
+        });
+        const text = completion.choices[0].message.content;
+        const start = text.indexOf('{');
+        const end = text.lastIndexOf('}');
+        data = JSON.parse(start >= 0 && end > start ? text.slice(start, end + 1) : text);
         break;
       } catch (err) {
         const isQuota = err.status === 429 || (err.message && err.message.includes('429'));
         const delay = isQuota ? 15000 : 1000;
-        console.error(`Gemini attempt ${attempt + 1} failed${isQuota ? ' (quota)' : ''}:`, err.message || err);
+        console.error(`OpenAI attempt ${attempt + 1} failed${isQuota ? ' (quota)' : ''}:`, err.message || err);
         if (attempt < 2) await new Promise(r => setTimeout(r, delay));
         else data = { winner: ['player1', 'player2', 'tie'][Math.floor(Math.random() * 3)], player1Emoji: '⚔️', player2Emoji: '⚔️', damage: 20, counterDamage: 10, description: 'The AI judge is unavailable. Fate decides the outcome.' };
       }
@@ -586,7 +590,7 @@ app.get('/api/game-state/:code', (req, res) => {
 });
 
 // --- Health Check ---
-app.get('/api/health', (req, res) => res.json({ status: 'ok', gemini: !!model }));
+app.get('/api/health', (req, res) => res.json({ status: 'ok', ai: !!openai }));
 
 // ============================================================
 // START
@@ -595,6 +599,6 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', gemini: !!model })
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Prompt Clash server running on port ${PORT}`);
-  console.log(`  Gemini: ${model ? 'configured' : 'NOT configured (set GEMINI_API_KEY)'}`);
+  console.log(`  AI judge: ${openai ? 'enabled (gpt-4o-mini)' : 'NOT configured (set OPENAI_API_KEY)'}`);
   console.log(`  Users stored at: ${USERS_FILE}`);
 });
