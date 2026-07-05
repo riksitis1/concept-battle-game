@@ -471,7 +471,10 @@ app.get('/api/profile', async (req, res) => {
 app.post('/api/find-match', async (req, res) => {
   const user = verifyToken(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
-  const { username, elo } = await getUserData(user.uid);
+  // Use JWT username (survives data file resets); elo from DB with fallback
+  const username = user.username || 'Player';
+  const userData = await getUserData(user.uid);
+  const elo = userData.elo || 1000;
   // Check if already in an active room (skip finished games)
   for (const room of rooms.values()) {
     if ((room.p1?.userId === user.uid || room.p2?.userId === user.uid) && room.phase !== 'game_over') {
@@ -502,7 +505,9 @@ app.post('/api/find-match', async (req, res) => {
 app.post('/api/create-room', async (req, res) => {
   const user = verifyToken(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
-  const { username, elo } = await getUserData(user.uid);
+  const username = user.username || 'Player';
+  const userData = await getUserData(user.uid);
+  const elo = userData.elo || 1000;
   const room = createRoom('private', { userId: user.uid, username, elo });
   res.json({ roomCode: room.code });
 });
@@ -517,7 +522,9 @@ app.post('/api/join-room', async (req, res) => {
   if (!room) return res.status(404).json({ error: 'Room not found' });
   if (room.p2) return res.status(400).json({ error: 'Room is full' });
   if (room.p1.userId === user.uid) return res.status(400).json({ error: 'Cannot join your own room' });
-  const { username, elo } = await getUserData(user.uid);
+  const username = user.username || 'Player';
+  const userData = await getUserData(user.uid);
+  const elo = userData.elo || 1000;
   room.p2 = { userId: user.uid, username, elo, hp: 100, entity: null, ready: false, entityHidden: true, emoji: null };
   room.phase = 'genre_select';
   res.json({ success: true });
