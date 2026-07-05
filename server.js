@@ -169,13 +169,20 @@ function calculateElo(ratingA, ratingB, winA) {
   };
 }
 
-function findOpenPublicRoom() {
+function findOpenPublicRoom(myElo) {
+  let bestRoom = null;
+  let bestDiff = Infinity;
   for (const room of rooms.values()) {
     if (room.type === 'public' && room.phase === 'waiting' && !room.p2) {
-      return room;
+      const roomElo = room.p1?.elo || 1000;
+      const diff = Math.abs(roomElo - myElo);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        bestRoom = room;
+      }
     }
   }
-  return null;
+  return bestRoom; // returns closest Elo match, or null if none exist
 }
 
 // ============================================================
@@ -683,8 +690,8 @@ app.post('/api/find-match', async (req, res) => {
       rooms.delete(code);
     }
   }
-  // Find an open room, or create one
-  let room = findOpenPublicRoom();
+  // Find an open room (closest Elo match), or create one
+  let room = findOpenPublicRoom(elo);
   if (room) {
     room.p2 = { userId: user.uid, username, elo, hp: 100, entity: null, ready: false, entityHidden: true, emoji: null };
     room.genre = GENRES[Math.floor(Math.random() * GENRES.length)];
