@@ -37,6 +37,7 @@ app.use(express.static('public'));
 const rooms = new Map();
 const matchQueue = [];
 const matchedMap = {}; // { [userId]: roomCode }
+const memoryUsers = {}; // fallback user store when Firestore is unavailable
 const GENRES = ['Animals', 'Machines', 'Mythical Creatures', 'Elements', 'Cosmic'];
 const ROUND_TIMEOUT = 30000;
 const AUTO_ADVANCE_DELAY = 6000;
@@ -348,30 +349,36 @@ RULES:
 // ============================================================
 
 async function updateEloAfterGame(room, winner, loser, winnerUserId) {
-  if (!db) return;
   try {
-    const winnerRef = db.collection('users').doc(winner.userId);
-    const loserRef = db.collection('users').doc(loser.userId);
-    const [wDoc, lDoc] = await Promise.all([winnerRef.get(), loserRef.get()]);
-    const wElo = wDoc.exists ? (wDoc.data().elo || 1000) : 1000;
-    const lElo = lDoc.exists ? (lDoc.data().elo || 1000) : 1000;
-    const result = calculateElo(wElo, lElo, true);
-    await Promise.all([
-      winnerRef.update({
-        elo: result.newA,
-        gamesPlayed: FieldValue.increment(1),
-        gamesWon: FieldValue.increment(1),
-      }),
-      loserRef.update({
-        elo: result.newB,
-        gamesPlayed: FieldValue.increment(1),
-      }),
-    ]);
-    // Store elo changes in room for display
-    room.eloChange = {
-      winner: { username: winner.username, oldElo: wElo, newElo: result.newA },
-      loser: { username: loser.username, oldElo: lElo, newElo: result.newB },
-    };
+    let wElo = 1000, lElo = 1000;
+    if (db) {
+      const winnerRef = db.collection('users').doc(winner.userId);
+      const loserRef = db.collection('users').doc(loser.userId);
+      const [wDoc, lDoc] = await Promise.all([winnerRef.get(), loserRef.get()]);
+      wElo = wDoc.exists ? (wDoc.data().elo || 1000) : 1000;
+      lElo = lDoc.exists ? (lDoc.data().elo || 1000) : 1000;
+      const result = calculateElo(wElo, lElo, true);
+      await Promise.all([
+        winnerRef.update({ elo: result.newA, gamesPlayed: FieldValue.increment(1), gamesWon: FieldValue.increment(1) }),
+        loserRef.update({ elo: result.newB, gamesPlayed: FieldValue.increment(1) }),
+      ]);
+      room.eloChange = {
+        winner: { username: winner.username, oldElo: wElo, newElo: result.newA },
+        loser: { username: loser.username, oldElo: lElo, newElo: result.newB },
+      };
+    } else {
+      const wMem = getMemoryUser(winner.userId);
+      const lMem = getMemoryUser(loser.userId);
+      wElo = wMem ? wMem.elo : 1000;
+      lElo = lMem ? lMem.elo : 1000;
+      const result = calculateElo(wElo, lElo, true);
+      if (wMem) { wMem.elo = result.newA; wMem.gamesPlayed = (wMem.gamesPlayed || 0) + 1; wMem.gamesWon = (wMem.gamesWon || 0) + 1; }
+      if (lMem) { lMem.elo = result.newB; lMem.gamesPlayed = (lMem.gamesPlayed || 0) + 1; }
+      room.eloChange = {
+        winner: { username: winner.username, oldElo: wElo, newElo: result.newA },
+        loser: { username: loser.username, oldElo: lElo, newElo: result.newB },
+      };
+    }
   } catch (e) {
     console.error('Elo update error:', e);
   }
@@ -381,6 +388,15 @@ async function updateEloAfterGame(room, winner, loser, winnerUserId) {
 // ROUTES
 // ============================================================
 
+// --- In-memory user helpers ---
+function findMemoryUser(username) {
+  return Object.values(memoryUsers).find(u => u.username === username);
+}
+
+function getMemoryUser(uid) {
+  return memoryUsers[uid] || null;
+}
+
 // --- Auth: Register ---
 app.post('/api/register', async (req, res) => {
   const { username, password } = req.body;
@@ -388,19 +404,19 @@ app.post('/api/register', async (req, res) => {
   if (username.length < 2) return res.status(400).json({ error: 'Username must be at least 2 characters' });
   if (password.length < 4) return res.status(400).json({ error: 'Password must be at least 4 characters' });
   try {
-    // Check for existing username
-    const existing = await db.collection('users').where('username', '==', username).get();
-    if (!existing.empty) return res.status(409).json({ error: 'Username already taken' });
     const uid = uuidv4();
     const hash = bcrypt.hashSync(password, 10);
-    await db.collection('users').doc(uid).set({
-      username,
-      password: hash,
-      elo: 1000,
-      gamesPlayed: 0,
-      gamesWon: 0,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    if (db) {
+      const existing = await db.collection('users').where('username', '==', username).get();
+      if (!existing.empty) return res.status(409).json({ error: 'Username already taken' });
+      await db.collection('users').doc(uid).set({
+        username, password: hash, elo: 1000, gamesPlayed: 0, gamesWon: 0,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } else {
+      if (findMemoryUser(username)) return res.status(409).json({ error: 'Username already taken' });
+      memoryUsers[uid] = { username, password: hash, elo: 1000, gamesPlayed: 0, gamesWon: 0 };
+    }
     const token = jwt.sign({ uid, username }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, uid, username });
   } catch (e) {
@@ -414,15 +430,24 @@ app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
   try {
-    const snapshot = await db.collection('users').where('username', '==', username).get();
-    if (snapshot.empty) return res.status(401).json({ error: 'Invalid username or password' });
-    const doc = snapshot.docs[0];
-    const data = doc.data();
-    if (!bcrypt.compareSync(password, data.password)) {
+    let docId, userData;
+    if (db) {
+      const snapshot = await db.collection('users').where('username', '==', username).get();
+      if (snapshot.empty) return res.status(401).json({ error: 'Invalid username or password' });
+      const doc = snapshot.docs[0];
+      docId = doc.id;
+      userData = doc.data();
+    } else {
+      const user = findMemoryUser(username);
+      if (!user) return res.status(401).json({ error: 'Invalid username or password' });
+      docId = Object.keys(memoryUsers).find(k => memoryUsers[k] === user);
+      userData = user;
+    }
+    if (!bcrypt.compareSync(password, userData.password)) {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
-    const token = jwt.sign({ uid: doc.id, username: data.username }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, uid: doc.id, username: data.username });
+    const token = jwt.sign({ uid: docId, username: userData.username }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({ token, uid: docId, username: userData.username });
   } catch (e) {
     console.error('Login error:', e);
     res.status(500).json({ error: 'Login failed' });
@@ -433,29 +458,40 @@ app.post('/api/login', async (req, res) => {
 app.get('/api/profile', async (req, res) => {
   const user = verifyToken(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
-  if (!db) return res.json({ uid: user.uid, username: 'Player', elo: 1000, gamesPlayed: 0, gamesWon: 0 });
-  const doc = await db.collection('users').doc(user.uid).get();
-  if (!doc.exists) {
-    return res.json({ uid: user.uid, username: 'Player', elo: 1000, gamesPlayed: 0, gamesWon: 0 });
+  try {
+    if (db) {
+      const doc = await db.collection('users').doc(user.uid).get();
+      if (!doc.exists) return res.status(404).json({ error: 'User not found' });
+      const { password, ...safe } = doc.data();
+      return res.json({ uid: user.uid, ...safe, avatarColor: avatarColor(safe.username) });
+    }
+    const memUser = getMemoryUser(user.uid);
+    if (!memUser) return res.status(404).json({ error: 'User not found' });
+    const { password, ...safe } = memUser;
+    res.json({ uid: user.uid, ...safe, avatarColor: avatarColor(safe.username) });
+  } catch (e) {
+    console.error('Profile error:', e);
+    res.status(500).json({ error: 'Failed to load profile' });
   }
-  const { password, ...safe } = doc.data();
-  res.json({ uid: user.uid, ...safe, avatarColor: avatarColor(safe.username) });
 });
+
+async function getUserData(uid) {
+  if (db) {
+    const doc = await db.collection('users').doc(uid).get();
+    if (doc.exists) return { username: doc.data().username, elo: doc.data().elo || 1000 };
+  } else {
+    const u = getMemoryUser(uid);
+    if (u) return { username: u.username, elo: u.elo || 1000 };
+  }
+  return { username: 'Player', elo: 1000 };
+}
 
 // --- Queue: Join ---
 app.post('/api/join-queue', async (req, res) => {
   const user = await verifyToken(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   const uid = user.uid;
-  let username = 'Player';
-  let elo = 1000;
-  if (db) {
-    const doc = await db.collection('users').doc(uid).get();
-    if (doc.exists) {
-      username = doc.data().username;
-      elo = doc.data().elo || 1000;
-    }
-  }
+  const { username, elo } = await getUserData(uid);
 
   if (matchQueue.find((u) => u.userId === uid)) {
     return res.json({ status: 'already_in_queue' });
@@ -503,20 +539,8 @@ app.get('/api/queue-status', async (req, res) => {
 app.post('/api/create-room', async (req, res) => {
   const user = await verifyToken(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
-  let username = 'Player';
-  let elo = 1000;
-  if (db) {
-    const doc = await db.collection('users').doc(user.uid).get();
-    if (doc.exists) {
-      username = doc.data().username;
-      elo = doc.data().elo || 1000;
-    }
-  }
-  const room = createRoom('private', {
-    userId: user.uid,
-    username,
-    elo,
-  });
+  const { username, elo } = await getUserData(user.uid);
+  const room = createRoom('private', { userId: user.uid, username, elo });
   res.json({ roomCode: room.code });
 });
 
@@ -531,15 +555,7 @@ app.post('/api/join-room', async (req, res) => {
   if (room.p2) return res.status(400).json({ error: 'Room is full' });
   if (room.p1.userId === user.uid)
     return res.status(400).json({ error: 'Cannot join your own room' });
-  let username = 'Player';
-  let elo = 1000;
-  if (db) {
-    const doc = await db.collection('users').doc(user.uid).get();
-    if (doc.exists) {
-      username = doc.data().username;
-      elo = doc.data().elo || 1000;
-    }
-  }
+  const { username, elo } = await getUserData(user.uid);
   room.p2 = {
     userId: user.uid,
     username,
