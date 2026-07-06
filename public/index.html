@@ -637,7 +637,7 @@
     </div>
 
     <!-- SCREEN: BATTLE -->
-    <div id="screen-battle" class="screen flex-1 flex flex-col p-3 gap-3 min-h-0">
+    <div id="screen-battle" class="screen flex-1 flex flex-col p-3 gap-3">
       <div class="flex items-center justify-between text-xs px-3 py-2 rounded-xl shrink-0" style="background: rgba(20, 20, 50, 0.4); backdrop-filter: blur(8px); border: 1px solid rgba(99, 102, 241, 0.05);">
         <span class="font-bold tracking-wide" style="background: linear-gradient(135deg, #818cf8, #c4b5fd); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">⚔️ <span id="battle-genre">???</span></span>
         <span class="flex items-center gap-3">
@@ -650,7 +650,7 @@
         <button id="btn-resign" onclick="resignBattle()" class="text-xs font-medium px-2.5 py-1.5 rounded-lg transition-all" style="color: rgba(239, 68, 68, 0.6); background: rgba(239, 68, 68, 0.06); border: 1px solid rgba(239, 68, 68, 0.08);" onmouseover="this.style.background='rgba(239,68,68,0.12)'; this.style.color='#ef4444'" onmouseout="this.style.background='rgba(239,68,68,0.06)'; this.style.color='rgba(239,68,68,0.6)'">✋ Resign</button>
       </div>
 
-      <div class="battle-main flex-1 flex items-stretch gap-3 min-h-0">
+      <div class="battle-main flex-1 flex items-stretch gap-3" style="min-height:0">
         <!-- P1 Side -->
         <div class="player-side flex-1 flex flex-col items-center justify-between glass-panel rounded-2xl p-4 min-w-0" style="box-shadow: 0 4px 24px rgba(0,0,0,0.2);">
           <div class="player-avatar-section flex flex-col items-center gap-1.5 shrink-0">
@@ -662,7 +662,7 @@
           </div>
           <div class="player-input-section w-full flex-1 flex flex-col justify-center gap-2">
             <div id="battle-p1-input-area" class="text-center">
-              <input id="battle-p1-input" type="text" placeholder="Your entity..." class="w-full px-3 py-3 rounded-xl bg-[#0a0a18]/70 border border-indigo-800/30 text-white glow-border outline-none text-center text-sm placeholder:text-gray-600">
+              <input id="battle-p1-input" type="text" placeholder="Your entity..." class="w-full px-3 py-3 rounded-xl border text-white glow-border outline-none text-center text-sm" style="background: rgba(10,10,24,0.7); border-color: rgba(99,102,241,0.3); color:#fff; --tw-placeholder-color:#9ca3af;">
               <button id="battle-p1-submit" onclick="submitEntity()" class="mt-2 w-full py-2.5 rounded-xl btn-primary text-sm font-bold tracking-wide">Submit</button>
             </div>
             <div id="battle-p1-ready" class="hidden flex-col items-center gap-1 py-2">
@@ -685,7 +685,7 @@
         </div>
 
         <!-- Center Arena -->
-        <div id="arena-center" class="relative flex-[1.8] flex flex-col items-center justify-center glass-panel rounded-2xl overflow-hidden shrink-0 min-w-[200px]" style="border-color: rgba(99, 102, 241, 0.12); box-shadow: 0 0 40px rgba(99, 102, 241, 0.04), 0 4px 24px rgba(0,0,0,0.2);">
+        <div id="arena-center" class="relative flex flex-col items-center justify-center glass-panel rounded-2xl overflow-hidden shrink-0" style="flex:1.8; min-width:200px; border-color: rgba(99, 102, 241, 0.12); box-shadow: 0 0 40px rgba(99, 102, 241, 0.04), 0 4px 24px rgba(0,0,0,0.2);">
           <div id="arena-emoji-p1" class="arena-emoji" style="left:10px">❓</div>
           <div id="arena-emoji-p2" class="arena-emoji" style="right:10px">❓</div>
           <div id="arena-entity-p1" class="arena-entity-label" style="left:10px"> </div>
@@ -711,7 +711,7 @@
           </div>
           <div class="player-input-section w-full flex-1 flex flex-col justify-center gap-2">
             <div id="battle-p2-input-area" class="text-center">
-              <input id="battle-p2-input" type="text" placeholder="Your entity..." class="w-full px-3 py-3 rounded-xl bg-[#0a0a18]/70 border border-indigo-800/30 text-white glow-border outline-none text-center text-sm placeholder:text-gray-600" disabled>
+              <input id="battle-p2-input" type="text" placeholder="Your entity..." class="w-full px-3 py-3 rounded-xl border text-white glow-border outline-none text-center text-sm" style="background: rgba(10,10,24,0.7); border-color: rgba(99,102,241,0.3);" disabled>
               <button id="battle-p2-submit" onclick="submitEntity()" class="mt-2 w-full py-2.5 rounded-xl btn-primary text-sm font-bold tracking-wide hidden">Submit</button>
             </div>
             <div id="battle-p2-ready" class="hidden flex-col items-center gap-1 py-2">
@@ -780,7 +780,7 @@
       console.log('SHOWSCREEN:', id);
       document.querySelectorAll('.screen').forEach(s => { s.style.display = 'none'; s.classList.remove('active'); });
       const el = document.getElementById(id);
-      if (el) { el.style.display = 'flex'; el.classList.add('active'); }
+      if (el) { el.style.display = 'flex'; void el.offsetWidth; el.classList.add('active'); }
       else { console.log('SHOWSCREEN: element not found:', id); }
     }
 
