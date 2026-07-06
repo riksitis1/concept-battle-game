@@ -459,9 +459,9 @@
         <button onclick="findPublicMatch()" class="px-7 py-3.5 rounded-xl btn-primary text-base font-bold tracking-wide">Find Public Match</button>
         <button onclick="createPrivateRoom()" class="px-7 py-3.5 rounded-xl btn-secondary text-base font-bold tracking-wide">Private Room</button>
       </div>
-      <div id="private-room-code" class="hidden animate-slide-down" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.15); border-radius: 12px; padding: 12px 20px;">
+      <div id="private-room-code" class="hidden animate-slide-down w-full max-w-xs" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.15); border-radius: 12px; padding: 12px 24px;">
         <span class="text-xs text-emerald-400 font-medium block mb-0.5">Room Code</span>
-        <span class="text-2xl font-bold font-mono tracking-[0.3em] text-center block text-emerald-300" id="private-room-code-value">????</span>
+        <span class="text-xl font-bold font-mono tracking-[0.2em] text-center block text-emerald-300" id="private-room-code-value">????</span>
       </div>
       <div class="flex gap-2 items-center animate-fade-in-up" style="animation-delay: 0.2s;">
         <input id="join-code-input" type="text" placeholder="Room Code" maxlength="4" class="w-28 px-4 py-3 rounded-xl bg-[#0a0a18]/70 border border-indigo-800/30 text-white text-center uppercase tracking-[0.2em] glow-border outline-none placeholder:text-gray-600 text-sm font-mono">
@@ -489,7 +489,7 @@
         <div class="text-5xl" style="filter: drop-shadow(0 0 30px rgba(99,102,241,0.2));">⏳</div>
         <div class="text-center">
           <div class="text-xs text-gray-500 font-medium uppercase tracking-widest mb-1">Room</div>
-          <div class="text-xl font-bold font-mono tracking-[0.25em] text-indigo-200"> <span id="waiting-room-code"></span></div>
+          <div class="text-xl font-bold font-mono tracking-[0.15em] text-indigo-200"> <span id="waiting-room-code"></span></div>
         </div>
       </div>
       <div class="flex gap-8 items-center animate-fade-in-up" style="animation-delay: 0.15s;">
