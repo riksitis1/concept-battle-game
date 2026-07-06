@@ -1154,10 +1154,17 @@
       if (isP1) {
         document.getElementById('pl-genre-grid').classList.remove('hidden');
         document.getElementById('pl-genre-picked').classList.add('hidden');
+        document.getElementById('pl-start-btn').classList.remove('hidden');
         if (state.opponent && selectedGenre) {
           document.getElementById('pl-start-btn').disabled = false;
         } else {
           document.getElementById('pl-start-btn').disabled = true;
+        }
+      } else {
+        document.getElementById('pl-genre-grid').classList.add('hidden');
+        document.getElementById('pl-start-btn').classList.add('hidden');
+        if (state.genre) {
+          document.getElementById('pl-genre-picked').classList.remove('hidden');
         }
       }
     }

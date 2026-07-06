@@ -728,7 +728,7 @@ app.post('/api/join-room', async (req, res) => {
   const username = user.username || 'Player';
   const userData = await getUserData(user.uid);
   const elo = userData.elo || 1000;
-  room.p2 = { userId: user.uid, username, elo, hp: 100, entity: null, ready: false, entityHidden: true, emoji: null };
+  room.p2 = { userId: user.uid, username, elo, hp: 100, entity: null, ready: false, entityHidden: true, emoji: null, lastPollTime: Date.now() };
   room.phase = 'genre_select';
   res.json({ success: true });
 });
