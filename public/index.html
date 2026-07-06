@@ -177,6 +177,7 @@
     .animate-fade-in-up { animation: fadeInUp 0.45s ease-out forwards; }
     .animate-slide-down { animation: slideDown 0.35s ease-out forwards; }
     .pulse-glow { animation: pulseGlow 2s ease-in-out infinite; }
+    .waiting-spin { animation: spinner 3s ease-in-out infinite; display: inline-block; }
     .spinner::after {
       content: '';
       width: 18px;
@@ -498,10 +499,11 @@
     <!-- SCREEN: WAITING ROOM -->
     <div id="screen-waiting-room" class="screen flex-1 flex flex-col items-center justify-center gap-6 p-4">
       <div class="animate-fade-in-up flex flex-col items-center gap-3">
-        <div class="text-5xl" style="filter: drop-shadow(0 0 30px rgba(99,102,241,0.2));">⏳</div>
+        <div class="text-5xl" style="filter: drop-shadow(0 0 30px rgba(99,102,241,0.2));"><span id="waiting-icon" class="waiting-spin">⏳</span></div>
         <div class="text-center">
-          <div class="text-xs text-gray-500 font-medium uppercase tracking-widest mb-1">Room</div>
-          <div class="text-xl font-bold font-mono tracking-[0.15em] text-indigo-200"> <span id="waiting-room-code"></span></div>
+          <div id="waiting-room-label" class="text-xs text-indigo-300/60 font-medium uppercase tracking-widest mb-1">Room</div>
+          <div id="waiting-room-code-wrapper" class="text-xl font-bold font-mono tracking-[0.15em] text-indigo-200"><span id="waiting-room-code"></span></div>
+          <div id="waiting-search-status" class="hidden text-sm text-indigo-300/80 font-semibold">Searching for opponent...</div>
         </div>
       </div>
       <div class="flex gap-8 items-center animate-fade-in-up" style="animation-delay: 0.15s;">
@@ -510,15 +512,15 @@
           <div id="waiting-p1-name" class="text-sm text-indigo-200 font-semibold">You</div>
         </div>
         <div class="flex flex-col items-center gap-1">
-          <div class="text-lg font-black text-gray-600 tracking-wider">VS</div>
+          <div class="text-lg font-black text-gray-500 tracking-wider">VS</div>
           <div class="w-8 h-px" style="background: linear-gradient(90deg, transparent, rgba(99,102,241,0.3), transparent);"></div>
         </div>
         <div class="flex flex-col items-center gap-2">
-          <div id="waiting-p2-avatar" class="letter-avatar w-16 h-16 text-xl" style="background: rgba(55, 55, 95, 0.8); border: 2px dashed rgba(99, 102, 241, 0.15);">?</div>
-          <div id="waiting-p2-name" class="text-sm text-gray-500 font-medium">Waiting...</div>
+          <div id="waiting-p2-avatar" class="letter-avatar w-16 h-16 text-xl pulse-glow" style="background: rgba(55, 55, 95, 0.8); border: 2px dashed rgba(99, 102, 241, 0.25);">?</div>
+          <div id="waiting-p2-name" class="text-sm text-indigo-300/60 font-medium">Waiting...</div>
         </div>
       </div>
-      <div id="waiting-players" class="text-gray-500 text-xs animate-fade-in-up" style="animation-delay: 0.25s;">Waiting for opponent to join...</div>
+      <div id="waiting-players" class="text-indigo-300/50 text-xs animate-fade-in-up" style="animation-delay: 0.25s;">Waiting for opponent to join...</div>
       <button onclick="leaveRoom()" class="px-6 py-2 rounded-xl btn-danger text-sm mt-2">Leave Room</button>
     </div>
 
@@ -1019,19 +1021,37 @@
         });
         if (!res.ok) return;
         const state = await res.json();
+        const isPublic = state.type === 'public';
+        const wrapper = document.getElementById('waiting-room-code-wrapper');
+        const label = document.getElementById('waiting-room-label');
+        const status = document.getElementById('waiting-search-status');
+        if (isPublic) {
+          wrapper.classList.add('hidden');
+          label.classList.add('hidden');
+          status.classList.remove('hidden');
+        } else {
+          wrapper.classList.remove('hidden');
+          label.classList.remove('hidden');
+          status.classList.add('hidden');
+          document.getElementById('waiting-room-code').textContent = roomCode;
+        }
         if (state.me) {
           const el = document.getElementById('waiting-p1-avatar');
           el.textContent = (state.me.username || '?').charAt(0).toUpperCase();
           el.style.backgroundColor = state.me.avatarColor || '#6366f1';
           document.getElementById('waiting-p1-name').textContent = state.me.username || 'You';
         }
+        const p2Avatar = document.getElementById('waiting-p2-avatar');
         if (state.opponent) {
-          const el = document.getElementById('waiting-p2-avatar');
-          el.textContent = (state.opponent.username || '?').charAt(0).toUpperCase();
-          el.style.backgroundColor = state.opponent.avatarColor || '#6366f1';
-          el.style.border = 'none';
+          p2Avatar.textContent = (state.opponent.username || '?').charAt(0).toUpperCase();
+          p2Avatar.style.backgroundColor = state.opponent.avatarColor || '#6366f1';
+          p2Avatar.style.border = 'none';
+          p2Avatar.classList.remove('pulse-glow');
           document.getElementById('waiting-p2-name').textContent = state.opponent.username || 'Opponent';
           document.getElementById('waiting-players').textContent = 'Opponent joined!';
+        } else {
+          p2Avatar.classList.add('pulse-glow');
+          document.getElementById('waiting-players').textContent = 'Waiting for opponent to join...';
         }
       } catch {}
     }
