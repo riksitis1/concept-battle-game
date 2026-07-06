@@ -228,13 +228,6 @@ async function getUserData(uid) {
   return { username: 'Player', elo: 1000 };
 }
 
-const GENRES = [
-  'Animals', 'Machines', 'Mythical Creatures', 'Elements', 'Cosmic',
-  'Fantasy', 'Sci-Fi', 'Food', 'Sports', 'Nature', 'Magic', 'Technology',
-  'Underwater', 'Dinosaurs', 'Superheroes', 'Weather', 'Robots',
-  'Crystals & Gems', 'Insects', 'Cars & Vehicles'
-];
-
 function pickRandomGenre() {
   return GENRES[Math.floor(Math.random() * GENRES.length)];
 }
