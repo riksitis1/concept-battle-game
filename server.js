@@ -502,7 +502,7 @@ CRITICAL RULES (follow strictly):
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const completion = await openai.chat.completions.create({
-          model: 'llama-3.0-8b-8k',
+          model: 'llama-3.1-8b-instant',
           messages: [
             { role: 'system', content: 'You are a strict AI battle judge. Always respond in valid JSON only. Keep descriptions short but vivid (8-15 words, 1 sentence). No stories, no markdown.' },
             { role: 'user', content: prompt }
