@@ -358,10 +358,35 @@ const COMMON_WORDS = new Set([
 ]);
 
 function isGibberish(entity) {
+  if (!entity || entity.trim().length === 0) return true;
   const words = entity.toLowerCase().replace(/[^a-z0-9\s-]/g, '').split(/\s+/).filter(w => w.length > 0);
   if (words.length === 0) return true;
-  // Single word entities are fine
+
+  // Keyboard mashing patterns
+  const keyboardRows = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm', 'qwertzuiop', 'azertyuiop'];
+  for (const w of words) {
+    if (w.length >= 5) {
+      for (const row of keyboardRows) {
+        if (row.includes(w) || w.split('').every(c => row.includes(c))) {
+          // Check if it's a consecutive substring of a keyboard row
+          for (let i = 0; i <= row.length - w.length; i++) {
+            if (row.slice(i, i + w.length) === w) return true;
+          }
+        }
+      }
+      // Repeated single character (e.g. "aaaaa", "bbbbb")
+      if (w.split('').every(c => c === w[0])) return true;
+    }
+  }
+
+  // Single word entities are fine for multi-word checks below
   if (words.length <= 2) return false;
+
+  // Very long unrecognized "words" (not in common words)
+  for (const w of words) {
+    if (w.length > 20 && !COMMON_WORDS.has(w)) return true;
+  }
+
   // Count how many words are NOT in common words
   let unknown = 0;
   for (const w of words) {
@@ -461,25 +486,25 @@ Return ONLY valid JSON (no markdown, no extra text). This will be parsed program
    "description": "1 punchy sentence (8-15 words) describing the action"
 }
 	
-STRICT RULES:
-- ENTITY VALIDATION: Each entity MUST be a real, coherent concept or thing. Gibberish includes made-up nonsense words strung together like "super duper luper guper gem", "blargle fargle shnargle", "zorp glorp florp snorp", "wibbly wobbly floob", "dooper snooper trooper gooper" — any phrase with 3+ made-up rhyming or silly words is GIBBERISH. If an entity is gibberish, nonsense, a random phrase (like "bradar what is this"), or not an actual thing, DISQUALIFY that player: they lose, take 40 damage, deal 0 counter-damage, and the description should be humorously dismissive. Even if the entity contains ONE real word (like "gem"), if the rest is nonsense, it's STILL gibberish.
-- GENRE CHECK: If an entity does NOT clearly belong to the "${genre}" genre, DISQUALIFY that player: they lose, take 40 damage, deal 0 counter-damage, and the description should be humorously dismissive.
-- NSFW / INAPPROPRIATE CONTENT: If an entity contains sexual, violent, hateful, or otherwise inappropriate content, IMMEDIATELY DISQUALIFY that player: they lose, take 40 damage, deal 0 counter-damage, and the description must say their submission was inappropriate and removed. Set player1Emoji to "🔞" for that player. NEVER describe the inappropriate content in the description — just say it was inappropriate.
-- TIES: If both entities are equally matched (same power level, identical, or neither clearly beats the other), set winner to "tie", damage to 0, and counterDamage to 0. Example: cat vs cat is a tie.
-- POWER COMPARISON: Compare entities using real-world logic, size, destructive capability, weapons, armor, and genre context. Named characters/famous entities (e.g. "Optimus Prime", "Godzilla", "Superman", "Darth Vader") should be evaluated at their ESTABLISHED power level from their source material — a 28-foot transforming robot warrior with plasma cannons and super strength is vastly more powerful than a car. "Super X" or "Mega X" or "Ultra X" tacked onto a normal thing (e.g. "super lamborghini", "mega bicycle", "ultra spoon") does NOT make it significantly more powerful — it's still just a fast car, a bike, or a spoon. A larger/more powerful entity (e.g. "T-Rex") should beat a smaller/weaker one (e.g. "Chicken"). A weapon (e.g. "Laser Cannon") beats an unarmored creature (e.g. "Deer"). A god-level entity (e.g. "Zeus") beats a mortal one (e.g. "Soldier"), but a clever mortal could slightly damage a god (counterDamage ~5). Always think step by step: which one would realistically win in a fight, and by how much?
-- POWER DIFFERENCE: If one entity is only slightly stronger than the other, keep damage low (10-15) and counterDamage 5-10. If there's a clear power gap (e.g. tank vs bicycle), damage 20-30 and counterDamage 0-5. If one utterly dominates (e.g. nuclear bomb vs ant, Optimus Prime vs sports car, T-Rex vs house cat), damage 35-40 and counterDamage 0. Disqualifications use 40. The loser should still get SOME counter-damage unless they are completely helpless.
-- EMOJIS: Pick a single creative emoji that best represents each entity. For example, "dragon" → "🐉", "water droplet" → "💧", "laser gun" → "🔫".
+CRITICAL RULES (follow strictly):
+- GIBBERISH: If an entry is nonsense, made-up words (e.g. "blargle fargle", "zorp glorp", "dooper snooper"), random keyboard spam ("asdfghjkl"), or a phrase with 3+ rhyming silly words, DISQUALIFY that player: they take 40 damage, deal 0 counter-damage, lose, and the description is humorously dismissive. Even ONE real word mixed with nonsense is STILL gibberish.
+- GENRE CHECK: If an entity does NOT clearly belong to the "${genre}" genre, DISQUALIFY that player: they take 40 damage, deal 0 counter-damage, lose, and the description is humorously dismissive. Correct genre is mandatory.
+- INAPPROPRIATE: If an entry contains sexual, hateful, extremely violent, or NSFW content, IMMEDIATELY DISQUALIFY that player: they take 40 damage, deal 0 counter-damage, lose, emoji is "🔞", and description says "submission was inappropriate and removed" — NEVER describe the content itself.
+- TIES: If both entities are equally matched (same power level, identical, or neither clearly beats the other), set winner to "tie", damage 0, counterDamage 0.
+- POWER COMPARISON: Use real-world logic, size, destructive capability, weapons, armor, and genre context. Compare ESTABLISHED power levels of named characters (e.g. Optimus Prime > sports car, T-Rex > chicken, laser cannon > deer). Prefixes like "super", "mega", "ultra", "hyper" on a normal thing (e.g. "super car") do NOT drastically increase power. A god-level entity (Zeus) beats a mortal (soldier) but the mortal can do ~5 counter-damage. Think step by step: who realistically wins, and by how much?
+- DAMAGE: Slight advantage → damage 10-15, counterDamage 5-10. Clear gap → damage 20-30, counterDamage 0-5. Utter domination → damage 35-40, counterDamage 0. Disqualification = 40. The loser always deals at least SOME counter-damage unless completely helpless.
+- EMOJIS: One creative emoji per entity (e.g. dragon → "🐉", water droplet → "💧", laser gun → "🔫").
 - "damage" is dealt TO the loser by the winner. "counterDamage" is dealt TO the winner by the loser.
-- Be creative, thematic, and fair. Think about which entity is naturally stronger and by how much.`;
+- Be creative, thematic, fair, and decisive. Use hard logic. No ties unless truly equal.`;
 
   let data;
   if (openai) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const completion = await openai.chat.completions.create({
-          model: 'llama-3.3-70b-versatile',
+          model: 'llama-3.0-8b-8k',
           messages: [
-            { role: 'system', content: 'You are an AI battle judge. Always respond in valid JSON. Keep descriptions short but vivid (8-15 words, 1 sentence). No stories.' },
+            { role: 'system', content: 'You are a strict AI battle judge. Always respond in valid JSON only. Keep descriptions short but vivid (8-15 words, 1 sentence). No stories, no markdown.' },
             { role: 'user', content: prompt }
           ],
           response_format: { type: 'json_object' }
