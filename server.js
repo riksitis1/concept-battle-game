@@ -693,7 +693,7 @@ app.post('/api/find-match', async (req, res) => {
   // Find an open room (closest Elo match), or create one
   let room = findOpenPublicRoom(elo);
   if (room) {
-    room.p2 = { userId: user.uid, username, elo, hp: 100, entity: null, ready: false, entityHidden: true, emoji: null };
+    room.p2 = { userId: user.uid, username, elo, hp: 100, entity: null, ready: false, entityHidden: true, emoji: null, lastPollTime: Date.now() };
     room.genre = GENRES[Math.floor(Math.random() * GENRES.length)];
     room.phase = 'submitting';
     room.turnStartTime = Date.now();
