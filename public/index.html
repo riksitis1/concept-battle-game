@@ -1192,7 +1192,7 @@
       });
     }
 
-    function selectPrivateGenre(el) {
+    async function selectPrivateGenre(el) {
       document.querySelectorAll('#pl-genre-grid .genre-card').forEach(c => c.classList.remove('selected'));
       el.classList.add('selected');
       selectedGenre = el.dataset.genre;
@@ -1200,14 +1200,12 @@
       document.getElementById('pl-start-btn').disabled = !p2Joined;
       let genre = selectedGenre;
       if (genre === 'Random') {
-        fetch('/api/random-genre').then(r => r.json()).then(data => {
-          genre = data.genre;
-          selectedGenre = genre;
-          lockPrivateGenre(genre);
-        });
-        return;
+        const res = await fetch('/api/random-genre');
+        const data = await res.json();
+        genre = data.genre;
+        selectedGenre = genre;
       }
-      lockPrivateGenre(genre);
+      await lockPrivateGenre(genre);
     }
 
     async function lockPrivateGenre(genre) {
@@ -1226,11 +1224,17 @@
       const btn = document.getElementById('pl-start-btn');
       btn.disabled = true;
       btn.textContent = 'Starting...';
-      await fetch('/api/start-game', {
+      const res = await fetch('/api/start-game', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: roomCode })
       });
+      if (!res.ok) {
+        btn.disabled = false;
+        btn.textContent = 'Start Game';
+        return;
+      }
+      pollGameState();
     }
 
     async function leaveRoom() {
