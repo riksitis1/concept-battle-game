@@ -1110,15 +1110,14 @@
     async function findPublicMatch() {
       const token = await getToken();
       if (!token) { showScreen('screen-auth'); return; }
-      showScreen('screen-matching');
       const res = await fetch('/api/find-match', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.status === 401) { showScreen('screen-auth'); return; }
-      if (!res.ok) { showScreen('screen-lobby'); return; }
+      if (!res.ok) return;
       const data = await res.json();
-      if (!data.roomCode) { showScreen('screen-lobby'); return; }
+      if (!data.roomCode) return;
       roomCode = data.roomCode;
       const stateRes = await fetch(`/api/game-state/${roomCode}`, {
         headers: { Authorization: `Bearer ${token}` }
