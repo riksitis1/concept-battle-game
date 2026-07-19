@@ -1103,22 +1103,23 @@
     async function findPublicMatch() {
       const token = await getToken();
       if (!token) return;
-      const btn = document.querySelector('#screen-lobby .btn-primary');
-      setLoading(btn, true);
+      let cancelled = false;
+      showScreen('screen-matching');
       const res = await fetch('/api/find-match', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (!res.ok) { setLoading(btn, false); return; }
+      if (!res.ok) { showScreen('screen-lobby'); return; }
       const data = await res.json();
-      setLoading(btn, false);
-      if (!data.roomCode) return;
+      if (!data.roomCode) { showScreen('screen-lobby'); return; }
       roomCode = data.roomCode;
       const stateRes = await fetch(`/api/game-state/${roomCode}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      if (!roomCode) { showScreen('screen-lobby'); return; }
       if (stateRes.ok) {
         const state = await stateRes.json();
+        if (!roomCode) { showScreen('screen-lobby'); return; }
         if (state.phase !== 'waiting') {
           playerSide = state.me?.side;
           lastPhase = state.phase;
@@ -1137,10 +1138,10 @@
     }
 
     async function cancelMatch() {
-      const token = await getToken();
-      if (!token) return;
-      await fetch('/api/cancel-match', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
       stopAllPolling();
+      if (roomCode) {
+        try { await fetch('/api/cancel-match', { method: 'POST', headers: { Authorization: `Bearer ${await getToken()}` } }); } catch {}
+      }
       roomCode = null;
       lastPhase = null;
       showScreen('screen-lobby');
@@ -1479,6 +1480,9 @@
     // ============================================================
     function onPhaseChange(state) {
       switch (state.phase) {
+        case 'waiting':
+          updateWaitingRoom();
+          break;
         case 'genre_select':
           selectedGenre = null;
           document.querySelectorAll('.genre-card').forEach(c => c.classList.remove('selected'));
