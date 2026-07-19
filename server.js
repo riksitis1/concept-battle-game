@@ -736,6 +736,24 @@ app.post('/api/register', (req, res) => {
   }
 });
 
+// --- Auth: Guest Login (auto-create guest account) ---
+app.post('/api/guest-login', (req, res) => {
+  try {
+    let guestName;
+    do {
+      const num = Math.floor(1000 + Math.random() * 9000);
+      guestName = 'Player_' + num;
+    } while (findUserByUsername(guestName));
+    const uid = uuidv4();
+    createUser(uid, guestName, null);
+    const token = jwt.sign({ uid, username: guestName }, JWT_SECRET, { expiresIn: '30d' });
+    res.json({ token, uid, username: guestName });
+  } catch (e) {
+    console.error('Guest login error:', e);
+    res.status(500).json({ error: 'Guest login failed' });
+  }
+});
+
 // --- Auth: Login ---
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;

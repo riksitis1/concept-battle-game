@@ -935,6 +935,23 @@
       if (prefill) document.getElementById('auth-username-field').value = prefill;
 
       if (!currentToken) {
+        // Auto-create guest account
+        try {
+          const guestRes = await fetch('/api/guest-login', { method: 'POST' });
+          if (guestRes.ok) {
+            const guestData = await guestRes.json();
+            currentToken = guestData.token;
+            localStorage.setItem('prompt_clash_token', currentToken);
+            localStorage.setItem('prompt_clash_username', guestData.username);
+            currentProfile = { uid: guestData.uid, username: guestData.username, elo: 1000, gamesPlayed: 0, gamesWon: 0, avatarColor: avatarStyle(guestData.username) };
+            document.getElementById('nav-username').textContent = currentProfile.username;
+            document.getElementById('nav-username').classList.remove('hidden');
+            document.getElementById('btn-logout').classList.remove('hidden');
+            showScreen('screen-lobby');
+            renderLobby();
+            return;
+          }
+        } catch {}
         document.getElementById('nav-username').classList.add('hidden');
         document.getElementById('btn-logout').classList.add('hidden');
         showScreen('screen-auth');
