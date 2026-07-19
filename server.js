@@ -57,10 +57,36 @@ function flushUsers() {
 // AI Init (Groq — free, OpenAI-compatible API)
 // ============================================================
 const GROQ_KEY = process.env.GROQ_API_KEY || null;
-if (GROQ_KEY) console.log('Groq API key found, enabling AI judge (llama-3.3-70b-versatile)');
+const AI_MODEL = 'llama-3.3-70b-versatile';
+if (GROQ_KEY) console.log(`Groq API key found, enabling AI judge (${AI_MODEL})`);
 else console.log('No Groq API key — battles will use fallback results');
 const openai = GROQ_KEY ? new OpenAI({ apiKey: GROQ_KEY, baseURL: 'https://api.groq.com/openai/v1' }) : null;
 const battleCache = new Map();
+
+// AI Request Queue — paces calls to avoid hitting Groq free tier limits (30 RPM)
+const aiQueue = [];
+let aiQueueProcessing = false;
+function enqueueAiCall(fn) {
+  return new Promise((resolve, reject) => {
+    aiQueue.push({ fn, resolve, reject });
+    processAiQueue();
+  });
+}
+async function processAiQueue() {
+  if (aiQueueProcessing) return;
+  aiQueueProcessing = true;
+  while (aiQueue.length > 0) {
+    const batch = aiQueue.splice(0, Math.min(aiQueue.length, 3));
+    await Promise.allSettled(batch.map(item =>
+      (async () => {
+        try { item.resolve(await item.fn()); } catch (e) { item.reject(e); }
+      })()
+    ));
+    // Pause ~2s between batches to stay within 30 RPM
+    if (aiQueue.length > 0) await new Promise(r => setTimeout(r, 2000));
+  }
+  aiQueueProcessing = false;
+}
 
 // ============================================================
 // Express Setup
@@ -176,6 +202,9 @@ function createRoom(type, p1Data) {
     turnStartTime: Date.now(),
     forfeitStarted: null,
     forfeitSide: null,
+    disconnectSide: null,
+    disconnectTime: null,
+    disconnectTimer: null,
     sseClients: [],
   };
   rooms.set(code, room);
@@ -188,6 +217,10 @@ function isInBattlePhase(room) {
 
 async function forfeitPlayer(room, loserSide) {
   if (room.phase === 'game_over') return;
+  clearTimeout(room.disconnectTimer);
+  room.disconnectSide = null;
+  room.disconnectTime = null;
+  room.disconnectTimer = null;
   const winnerSide = loserSide === 'p1' ? 'p2' : 'p1';
   const winner = room[winnerSide];
   const loser = room[loserSide];
@@ -251,6 +284,9 @@ function sanitizeRoom(room, uid) {
       hp: opponent.hp, elo: opponent.elo, ready: opponent.ready,
       entityHidden: opponent.entityHidden, avatarColor: avatarColor(opponent.username),
     } : null,
+    disconnected: room.disconnectSide ? true : false,
+    disconnectedSide: room.disconnectSide,
+    disconnectTimeRemaining: room.disconnectTime ? Math.max(0, Math.ceil(30 - (Date.now() - room.disconnectTime) / 1000)) : 0,
   };
 }
 
@@ -609,29 +645,30 @@ CRITICAL RULES (follow strictly in this order):
 
   let data;
   if (openai) {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const completion = await openai.chat.completions.create({
-          model: 'llama-3.1-8b-instant',
-          messages: [
-            { role: 'system', content: `You are ${personalityName}, a strict AI battle judge. ${personalityStyle} The active mutator is: ${mutatorName} — ${mutatorStyle}. Your most important rule is GENRE CHECK — disqualify any entity that does not belong to the specified genre. Always respond in valid JSON only. Keep descriptions vivid (8-25 words, 1 sentence) and match your assigned personality. No stories, no markdown.` },
-            { role: 'user', content: prompt }
-          ],
-          response_format: { type: 'json_object' }
-        });
-        const text = completion.choices[0].message.content;
-        const start = text.indexOf('{');
-        const end = text.lastIndexOf('}');
-        data = JSON.parse(start >= 0 && end > start ? text.slice(start, end + 1) : text);
-        break;
-      } catch (err) {
-        const isQuota = err.status === 429 || (err.message && err.message.includes('429'));
-        const delay = isQuota ? 15000 : 1000;
-        console.error(`Groq attempt ${attempt + 1} failed${isQuota ? ' (quota)' : ''}:`, err.message || err);
-        if (attempt < 2) await new Promise(r => setTimeout(r, delay));
-        else data = { winner: ['player1', 'player2', 'tie'][Math.floor(Math.random() * 3)], player1Emoji: '⚔️', player2Emoji: '⚔️', damage: 20, counterDamage: 10, description: 'The AI judge is unavailable. Fate decides the outcome.' };
+    data = await enqueueAiCall(async () => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const completion = await openai.chat.completions.create({
+            model: AI_MODEL,
+            messages: [
+              { role: 'system', content: `You are ${personalityName}, a strict AI battle judge. ${personalityStyle} The active mutator is: ${mutatorName} — ${mutatorStyle}. Your most important rule is GENRE CHECK — disqualify any entity that does not belong to the specified genre. Always respond in valid JSON only. Keep descriptions vivid (8-25 words, 1 sentence) and match your assigned personality. No stories, no markdown.` },
+              { role: 'user', content: prompt }
+            ],
+            response_format: { type: 'json_object' }
+          });
+          const text = completion.choices[0].message.content;
+          const start = text.indexOf('{');
+          const end = text.lastIndexOf('}');
+          return JSON.parse(start >= 0 && end > start ? text.slice(start, end + 1) : text);
+        } catch (err) {
+          const isQuota = err.status === 429 || (err.message && err.message.includes('429'));
+          const delay = isQuota ? 15000 : 1000;
+          console.error(`Groq attempt ${attempt + 1} failed${isQuota ? ' (quota)' : ''}:`, err.message || err);
+          if (attempt < 2) await new Promise(r => setTimeout(r, delay));
+          else return { winner: ['player1', 'player2', 'tie'][Math.floor(Math.random() * 3)], player1Emoji: '⚔️', player2Emoji: '⚔️', damage: 20, counterDamage: 10, description: 'The AI judge is unavailable. Fate decides the outcome.' };
+        }
       }
-    }
+    });
   } else {
     data = { winner: ['player1', 'player2', 'tie'][Math.floor(Math.random() * 3)], player1Emoji: '⚔️', player2Emoji: '⚔️', damage: 20, counterDamage: 10, description: 'With no AI judge available, the battle is decided by fate.' };
   }
@@ -932,6 +969,7 @@ function destroyRoom(room) {
   if (!room) return;
   clearTimeout(room.roundTimer);
   clearTimeout(room.advanceTimer);
+  clearTimeout(room.disconnectTimer);
   if (room.sseClients) {
     for (const client of room.sseClients) {
       try { client.res.end(); } catch {}
@@ -946,10 +984,26 @@ app.post('/api/leave-room', async (req, res) => {
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   for (const [code, room] of rooms.entries()) {
     if (room.p1?.userId === user.uid || room.p2?.userId === user.uid) {
-      // If in active battle, forfeit instead of silently deleting
       if (isInBattlePhase(room)) {
         const loserSide = room.p1.userId === user.uid ? 'p1' : 'p2';
-        await forfeitPlayer(room, loserSide);
+        // If the other player already disconnected, forfeit immediately
+        if (room.disconnectSide && room.disconnectSide !== loserSide) {
+          await forfeitPlayer(room, loserSide);
+        } else if (room.disconnectSide === loserSide) {
+          // Same player already marked — ignore duplicate
+          return res.json({ success: true });
+        } else {
+          // First disconnect — start 30s grace period
+          room.disconnectSide = loserSide;
+          room.disconnectTime = Date.now();
+          clearTimeout(room.disconnectTimer);
+          room.disconnectTimer = setTimeout(async () => {
+            if (room && room.disconnectSide) {
+              await forfeitPlayer(room, room.disconnectSide);
+            }
+          }, 30000);
+          broadcastRoomState(room);
+        }
       } else {
         destroyRoom(room);
         rooms.delete(code);
@@ -1093,19 +1147,13 @@ app.get('/api/game-state/:code', async (req, res) => {
   const mySide = isP1 ? 'p1' : 'p2';
   room[mySide].lastPollTime = Date.now();
 
-  // If in active battle, check if opponent disconnected
-  if (isInBattlePhase(room)) {
-    const oppSide = isP1 ? 'p2' : 'p1';
-    const now = Date.now();
-    const oppLastPoll = room[oppSide].lastPollTime || 0;
-
-    if (now - oppLastPoll > 20000) {
-      // Opponent has been gone >20s — they forfeit
-      await forfeitPlayer(room, oppSide);
-    } else if (now - oppLastPoll > 5000) {
-      // Opponent has been gone >5s but <20s — show a warning in the state
-      // We can add an optional field, but it's optional on the client
-    }
+  // If disconnected and this player is the one who left, reconnect them
+  if (room.disconnectSide && room[room.disconnectSide]?.userId === user.uid) {
+    clearTimeout(room.disconnectTimer);
+    room.disconnectSide = null;
+    room.disconnectTime = null;
+    room.disconnectTimer = null;
+    broadcastRoomState(room);
   }
 
   res.json(sanitizeRoom(room, user.uid));
@@ -1204,6 +1252,6 @@ process.on('SIGUSR2', () => { flushUsers(); process.exit(0); });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Prompt Clash server running on port ${PORT}`);
-  console.log(`  AI judge: ${openai ? 'enabled (llama-3.3-70b via Groq)' : 'NOT configured (set GROQ_API_KEY)'}`);
+  console.log(`  AI judge: ${openai ? `enabled (${AI_MODEL} via Groq)` : 'NOT configured (set GROQ_API_KEY)'}`);
   console.log(`  Users stored at: ${USERS_FILE}`);
 });
