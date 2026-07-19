@@ -981,6 +981,13 @@
           renderLobby();
           return;
         }
+        // Token invalid — clear it and show auth
+        currentToken = null;
+        localStorage.removeItem('prompt_clash_token');
+        document.getElementById('nav-username').classList.add('hidden');
+        document.getElementById('btn-logout').classList.add('hidden');
+        showScreen('screen-auth');
+        return;
       } catch {}
       const savedName = localStorage.getItem('prompt_clash_username') || 'Player';
       currentProfile = { uid: '', username: savedName, elo: 1000, gamesPlayed: 0, gamesWon: 0 };
@@ -1102,13 +1109,13 @@
     // ============================================================
     async function findPublicMatch() {
       const token = await getToken();
-      if (!token) return;
-      let cancelled = false;
+      if (!token) { showScreen('screen-auth'); return; }
       showScreen('screen-matching');
       const res = await fetch('/api/find-match', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` }
       });
+      if (res.status === 401) { showScreen('screen-auth'); return; }
       if (!res.ok) { showScreen('screen-lobby'); return; }
       const data = await res.json();
       if (!data.roomCode) { showScreen('screen-lobby'); return; }
