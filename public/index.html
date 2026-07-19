@@ -672,11 +672,12 @@
 
     <!-- GENRE SPLASH -->
     <div id="genre-splash" class="hidden fixed inset-0 z-50 flex items-center justify-center" style="background: radial-gradient(ellipse at center, rgba(30,27,75,0.96), rgba(7,7,15,0.98));">
-      <div id="genre-splash-content" class="text-center">
+      <div id="genre-splash-content" class="text-center flex flex-col items-center justify-center">
         <div id="genre-splash-round" class="text-base md:text-lg text-indigo-400/60 uppercase tracking-[0.4em] mb-2 font-semibold">Round 1</div>
         <div class="text-8xl md:text-9xl mb-5" id="genre-splash-icon" style="filter: drop-shadow(0 0 50px rgba(99,102,241,0.3));">⚔️</div>
         <div class="text-xs md:text-sm text-indigo-400/70 uppercase tracking-[0.3em] mb-3 font-semibold">Battle Genre</div>
-        <div id="genre-splash-name" class="text-6xl md:text-8xl font-extrabold tracking-tight leading-tight" style="background: linear-gradient(135deg, #818cf8 0%, #c4b5fd 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; filter: drop-shadow(0 0 30px rgba(99,102,241,0.15));"></div>
+        <div id="genre-splash-name" class="text-6xl md:text-8xl font-extrabold tracking-tight leading-tight mb-4" style="background: linear-gradient(135deg, #818cf8 0%, #c4b5fd 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; filter: drop-shadow(0 0 30px rgba(99,102,241,0.15));"></div>
+        <div id="genre-splash-mutator" class="hidden text-xs md:text-sm text-amber-300 font-bold tracking-[0.2em] uppercase px-4 py-2 rounded-xl border border-amber-500/20" style="background: rgba(245, 158, 11, 0.08);"></div>
       </div>
     </div>
 
@@ -692,6 +693,16 @@
           <span id="battle-countdown" class="font-bold font-mono countdown text-sm text-indigo-200">30s</span>
         </span>
         <button id="btn-resign" onclick="resignBattle()" class="text-xs font-medium px-2.5 py-1.5 rounded-lg transition-all" style="color: rgba(239, 68, 68, 0.6); background: rgba(239, 68, 68, 0.06); border: 1px solid rgba(239, 68, 68, 0.08);" onmouseover="this.style.background='rgba(239,68,68,0.12)'; this.style.color='#ef4444'" onmouseout="this.style.background='rgba(239,68,68,0.06)'; this.style.color='rgba(239,68,68,0.6)'">✋ Resign</button>
+      </div>
+
+      <!-- BATTLE SUB-HEADER: JUDGE & MUTATOR -->
+      <div class="flex items-center justify-between text-[11px] px-3 py-1.5 rounded-xl shrink-0" style="background: rgba(15, 15, 35, 0.5); border: 1px solid rgba(99, 102, 241, 0.04); margin-top: -4px;">
+        <span class="text-indigo-300 font-medium flex items-center gap-1.5">
+          👨‍⚖️ Judge: <span id="battle-judge" class="font-semibold text-indigo-100">???</span>
+        </span>
+        <span class="text-indigo-300 font-medium flex items-center gap-1.5">
+          🌀 Mutator: <span id="battle-mutator" class="font-semibold text-amber-300">Normal</span>
+        </span>
       </div>
 
       <div class="battle-main flex-1 flex items-stretch gap-3 min-h-0">
@@ -832,13 +843,22 @@
       }
     }
 
-    function showGenreSplash(genre, round) {
+    function showGenreSplash(genre, round, mutator) {
       const splash = document.getElementById('genre-splash');
       const nameEl = document.getElementById('genre-splash-name');
       const iconEl = document.getElementById('genre-splash-icon');
       const roundEl = document.getElementById('genre-splash-round');
+      const mutatorEl = document.getElementById('genre-splash-mutator');
       nameEl.textContent = genre;
       roundEl.textContent = round ? 'Round ' + round : '';
+      
+      if (mutator && mutator !== 'Normal') {
+        mutatorEl.textContent = `MUTATOR: ${mutator.toUpperCase()}`;
+        mutatorEl.classList.remove('hidden');
+      } else {
+        mutatorEl.classList.add('hidden');
+      }
+
       const icons = { 'Animals':'🦁','Machines':'⚙️','Mythical Creatures':'🐉','Elements':'🔥','Cosmic':'🌌','Fantasy':'🧙','Sci-Fi':'🚀','Food':'🍔','Sports':'⚽','Nature':'🌿','Magic':'🔮','Technology':'💻','Underwater':'🐠','Dinosaurs':'🦕','Superheroes':'🦸','Weather':'⛈️','Robots':'🤖','Crystals & Gems':'💎','Insects':'🐛','Cars & Vehicles':'🚗','Random':'🎲' };
       iconEl.textContent = icons[genre] || '⚔️';
       splash.classList.remove('hidden');
@@ -1450,10 +1470,22 @@
           break;
         case 'submitting':
           (async () => {
-            await showGenreSplash(state.genre || 'Battle', (state.currentRound || 0) + 1);
+            await showGenreSplash(state.genre || 'Battle', (state.currentRound || 0) + 1, state.mutator);
             showScreen('screen-battle');
             document.getElementById('battle-round').textContent = (state.currentRound || 0) + 1;
             document.getElementById('battle-genre').textContent = state.genre || '???';
+            
+            // Update AI Judge and Mutator displays
+            const judgeIcons = {
+              'Hype Beast MC': '🎤 Hype Beast MC',
+              'Shakespearean Bard': '📜 Sir Alistair',
+              'Chef Ramsay': '👨‍🍳 Chef Ramsay',
+              'Cyborg-9000': '🤖 Cyborg-9000',
+              'Anime Narrator': '⚡ Sensei Ken'
+            };
+            document.getElementById('battle-judge').textContent = judgeIcons[state.judgePersonality] || '👨‍⚖️ AI Judge';
+            document.getElementById('battle-mutator').textContent = state.mutator || 'Normal';
+
             turnStartTime = state.turnStartTime || Date.now();
             {
               const side = state.me?.side;
@@ -1837,13 +1869,15 @@
         loserEmoji.style.setProperty('--kb-target', p1Wins ? '120px' : '-120px');
         winnerEmoji.classList.add('victory-pulse');
 
-        const dmgEl = loserSide === 'p1' ? dmgP1 : dmgP2;
-        dmgEl.textContent = `-${entry.damage}`;
-        dmgEl.className = 'damage-popup';
-        dmgEl.style.color = '#ef4444';
-        dmgEl.style.left = loserSide === 'p1' ? '25%' : '55%';
-        dmgEl.style.top = '25%';
-        dmgEl.classList.remove('hidden');
+        if (entry.damage > 0) {
+          const dmgEl = loserSide === 'p1' ? dmgP1 : dmgP2;
+          dmgEl.textContent = `-${entry.damage}`;
+          dmgEl.className = 'damage-popup';
+          dmgEl.style.color = '#ef4444';
+          dmgEl.style.left = loserSide === 'p1' ? '25%' : '55%';
+          dmgEl.style.top = '25%';
+          dmgEl.classList.remove('hidden');
+        }
 
         if (entry.counterDamage > 0) {
           await sleep(300);
@@ -1856,9 +1890,30 @@
           cdmgEl.classList.remove('hidden');
         }
 
+        // Show P1 Healing if any
+        if (entry.p1Heal > 0) {
+          const hEl = dmgP1;
+          hEl.textContent = `+${entry.p1Heal}`;
+          hEl.className = 'damage-popup';
+          hEl.style.color = '#10b981';
+          hEl.style.left = '25%';
+          hEl.style.top = '25%';
+          hEl.classList.remove('hidden');
+        }
+        // Show P2 Healing if any
+        if (entry.p2Heal > 0) {
+          const hEl = dmgP2;
+          hEl.textContent = `+${entry.p2Heal}`;
+          hEl.className = 'damage-popup';
+          hEl.style.color = '#10b981';
+          hEl.style.left = '55%';
+          hEl.style.top = '25%';
+          hEl.classList.remove('hidden');
+        }
+
         const loserHp = p1Wins ? state.opponent?.hp : state.me?.hp || 0;
         document.getElementById(`battle-${loserSide}-hp`).style.width = Math.max(0, loserHp) + '%';
-        if (entry.counterDamage > 0) {
+        if (entry.counterDamage > 0 || entry.p1Heal > 0 || entry.p2Heal > 0) {
           const winnerHp = p1Wins ? state.me?.hp : state.opponent?.hp || 0;
           document.getElementById(`battle-${winnerSide}-hp`).style.width = Math.max(0, winnerHp) + '%';
         }
@@ -1870,6 +1925,31 @@
         descEl.classList.remove('hidden');
         await sleep(500);
       } else {
+        // Show Tie Healing if any (Regen Rain tie)
+        if (entry.p1Heal > 0 || entry.p2Heal > 0) {
+          if (entry.p1Heal > 0) {
+            dmgP1.textContent = `+${entry.p1Heal}`;
+            dmgP1.className = 'damage-popup';
+            dmgP1.style.color = '#10b981';
+            dmgP1.style.left = '25%';
+            dmgP1.style.top = '25%';
+            dmgP1.classList.remove('hidden');
+          }
+          if (entry.p2Heal > 0) {
+            dmgP2.textContent = `+${entry.p2Heal}`;
+            dmgP2.className = 'damage-popup';
+            dmgP2.style.color = '#10b981';
+            dmgP2.style.left = '55%';
+            dmgP2.style.top = '25%';
+            dmgP2.classList.remove('hidden');
+          }
+          const p1Hp = state.me?.side === 'p1' ? state.me?.hp : state.opponent?.hp || 0;
+          const p2Hp = state.me?.side === 'p2' ? state.me?.hp : state.opponent?.hp || 0;
+          document.getElementById('battle-p1-hp').style.width = Math.max(0, p1Hp) + '%';
+          document.getElementById('battle-p2-hp').style.width = Math.max(0, p2Hp) + '%';
+          await sleep(500);
+        }
+
         emojiP1.style.transition = 'all 0.5s ease-out';
         emojiP2.style.transition = 'all 0.5s ease-out';
         emojiP1.style.transform = 'translateX(-15px) scale(0.9)';
