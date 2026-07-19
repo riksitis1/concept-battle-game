@@ -339,6 +339,17 @@
     }
     .entity-hidden { filter: blur(6px); user-select: none; }
     .entity-revealed { filter: blur(0); }
+    .help-tip { cursor: help; opacity: 0.5; font-size: 12px; transition: opacity 0.2s; color: #818cf8; position: relative; }
+    .help-tip:hover { opacity: 1; }
+    .help-tip:hover::after {
+      content: attr(title);
+      position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+      background: rgba(10,10,25,0.95); color: #c4b5fd; font-size: 11px; padding: 6px 10px;
+      border-radius: 8px; white-space: nowrap; max-width: 260px; white-space: normal;
+      border: 1px solid rgba(99,102,241,0.15); z-index: 100;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      line-height: 1.4;
+    }
 
     .hp-danger { background: linear-gradient(to right, #ef4444, #dc2626) !important; }
     .hp-warning { background: linear-gradient(to right, #f59e0b, #d97706) !important; }
@@ -454,10 +465,10 @@
     <!-- SCREEN: AUTH -->
     <div id="screen-auth" class="screen active flex-1 flex items-center justify-center p-4">
       <div class="w-full max-w-sm animate-fade-in-up" style="background: rgba(20, 20, 50, 0.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(99, 102, 241, 0.1); box-shadow: 0 8px 48px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(99, 102, 241, 0.04) inset; border-radius: 20px; padding: 36px 28px;">
-        <div class="text-center mb-7">
-          <div class="text-5xl mb-3" style="filter: drop-shadow(0 0 30px rgba(99,102,241,0.3));">⚔️</div>
-          <h2 class="text-2xl font-extrabold tracking-tight" style="background: linear-gradient(135deg, #818cf8 0%, #c4b5fd 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">Enter the Arena</h2>
-          <p class="text-gray-500 text-sm mt-1 font-medium">Sign in to battle</p>
+        <div class="text-center mb-6">
+          <div class="text-5xl mb-2" style="filter: drop-shadow(0 0 30px rgba(99,102,241,0.3));">⚔️</div>
+          <h2 class="text-2xl font-extrabold tracking-tight" style="background: linear-gradient(135deg, #818cf8 0%, #c4b5fd 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">Prompt Clash</h2>
+          <p class="text-xs text-indigo-300/70 mt-1 leading-relaxed max-w-xs mx-auto">Type any entity and an AI judge decides who wins. Each round brings a random genre & mutator — adapt to survive!</p>
         </div>
         <div id="auth-error" class="text-red-400 text-sm mb-3 text-center hidden px-3 py-2 rounded-lg" style="background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.1);"></div>
         <div class="space-y-3">
@@ -493,6 +504,16 @@
         </div>
 
         <button onclick="findPublicMatch()" class="w-full py-4 rounded-xl btn-primary text-base font-bold tracking-wide animate-fade-in-up" style="animation-delay: 0.1s;">Find Public Match</button>
+
+        <button onclick="toggleHowToPlay()" class="w-full py-2 rounded-xl text-xs font-medium animate-fade-in-up transition-all" style="animation-delay: 0.12s; color: rgba(99,102,241,0.5);" onmouseover="this.style.color='rgba(99,102,241,0.8)'" onmouseout="this.style.color='rgba(99,102,241,0.5)'">📖 How to Play</button>
+        <div id="how-to-play" class="hidden animate-slide-down text-xs text-indigo-300/70 leading-relaxed space-y-3 px-4 py-4 rounded-xl" style="background: rgba(20, 20, 50, 0.5); border: 1px solid rgba(99,102,241,0.06);">
+          <p><strong class="text-indigo-200">1. Match</strong> — Find or create a room to battle another player.</p>
+          <p><strong class="text-indigo-200">2. Genre</strong> — Each round starts with a random <span class="text-indigo-200">genre</span> (e.g. Animals, Sci-Fi). Your entity must fit it!</p>
+          <p><strong class="text-indigo-200">3. Mutator</strong> — A random <span class="text-amber-300">mutator</span> (Double Damage, Lava Floor, etc.) changes the rules every round.</p>
+          <p><strong class="text-indigo-200">4. Submit</strong> — Type any creature, object, or character that fits the genre. Be creative!</p>
+          <p><strong class="text-indigo-200">5. Judge</strong> — An <span class="text-indigo-200">AI narrator</span> with a unique personality judges who wins and by how much.</p>
+          <p><strong class="text-indigo-200">6. Survive</strong> — First to reach 0 HP loses. Disqualified entries deal massive damage to themselves.</p>
+        </div>
 
         <div class="animate-fade-in-up flex flex-col gap-4" style="animation-delay: 0.15s;">
           <button id="btn-toggle-private" onclick="togglePrivateSection()" class="w-full py-3 rounded-xl btn-ghost text-sm font-bold tracking-wide">Private Room ▾</button>
@@ -624,6 +645,7 @@
         <div class="text-4xl mb-2" style="filter: drop-shadow(0 0 30px rgba(99,102,241,0.2));">🎯</div>
         <h2 class="text-xl font-extrabold tracking-tight" style="background: linear-gradient(135deg, #818cf8 0%, #c4b5fd 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">Choose the Battle Genre</h2>
         <p class="text-indigo-300/60 text-sm mt-1">Pick the category for this battle</p>
+        <p class="text-indigo-400/40 text-[10px] italic">Note: Each round gets a random genre from your pick's category pool for variety!</p>
       </div>
       <div id="genre-grid" class="genre-grid grid grid-cols-3 gap-2 w-full max-w-lg animate-fade-in-up" style="animation-delay: 0.1s;">
         <div class="genre-card" data-genre="Animals" onclick="selectGenre(this)">🦁 Animals</div>
@@ -699,9 +721,11 @@
       <div class="flex items-center justify-between text-[11px] px-3 py-1.5 rounded-xl shrink-0" style="background: rgba(15, 15, 35, 0.5); border: 1px solid rgba(99, 102, 241, 0.04); margin-top: -4px;">
         <span class="text-indigo-300 font-medium flex items-center gap-1.5">
           👨‍⚖️ Judge: <span id="battle-judge" class="font-semibold text-indigo-100">???</span>
+          <span class="help-tip" title="An AI narrator with a unique personality judges each round. Every match gets a different judge who writes fight descriptions in their own style.">ⓘ</span>
         </span>
         <span class="text-indigo-300 font-medium flex items-center gap-1.5">
           🌀 Mutator: <span id="battle-mutator" class="font-semibold text-amber-300">Normal</span>
+          <span class="help-tip" title="Each round has a random mutator that changes the rules: Double Damage x2, Opposite Day (weakest wins), Lava Floor (both burn), Sudden Death (50 DMG), or Regen Rain (healing).">ⓘ</span>
         </span>
       </div>
 
@@ -717,8 +741,9 @@
           </div>
           <div class="player-input-section w-full flex-1 flex flex-col justify-center gap-2">
             <div id="battle-p1-input-area" class="text-center">
-              <input id="battle-p1-input" type="text" placeholder="Your entity..." class="w-full px-3 py-3 rounded-xl bg-[#0a0a18]/70 border border-indigo-800/30 text-white glow-border outline-none text-center text-sm placeholder:text-gray-600">
+              <input id="battle-p1-input" type="text" placeholder="e.g. T-Rex, Laser Cannon, Zeus..." class="w-full px-3 py-3 rounded-xl bg-[#0a0a18]/70 border border-indigo-800/30 text-white glow-border outline-none text-center text-sm placeholder:text-gray-600">
               <button id="battle-p1-submit" onclick="submitEntity()" class="mt-2 w-full py-2.5 rounded-xl btn-primary text-sm font-bold tracking-wide">Submit</button>
+              <div id="battle-p1-tip" class="text-[10px] text-indigo-400/40 text-center mt-1.5 italic transition-opacity">Stronger & more creative = more damage. Fitting the genre is required!</div>
             </div>
             <div id="battle-p1-ready" class="hidden flex-col items-center gap-1 py-2">
               <div class="flex items-center gap-2">
@@ -766,8 +791,9 @@
           </div>
           <div class="player-input-section w-full flex-1 flex flex-col justify-center gap-2">
             <div id="battle-p2-input-area" class="text-center">
-              <input id="battle-p2-input" type="text" placeholder="Your entity..." class="w-full px-3 py-3 rounded-xl bg-[#0a0a18]/70 border border-indigo-800/30 text-white glow-border outline-none text-center text-sm placeholder:text-gray-600" disabled>
+              <input id="battle-p2-input" type="text" placeholder="e.g. T-Rex, Laser Cannon, Zeus..." class="w-full px-3 py-3 rounded-xl bg-[#0a0a18]/70 border border-indigo-800/30 text-white glow-border outline-none text-center text-sm placeholder:text-gray-600" disabled>
               <button id="battle-p2-submit" onclick="submitEntity()" class="mt-2 w-full py-2.5 rounded-xl btn-primary text-sm font-bold tracking-wide hidden">Submit</button>
+              <div id="battle-p2-tip" class="text-[10px] text-indigo-400/40 text-center mt-1.5 italic">Stronger & more creative = more damage. Fitting the genre is required!</div>
             </div>
             <div id="battle-p2-ready" class="hidden flex-col items-center gap-1 py-2">
               <div class="flex items-center gap-2">
@@ -1129,6 +1155,11 @@
       const isHidden = section.classList.contains('hidden');
       section.classList.toggle('hidden');
       btn.textContent = isHidden ? 'Private Room ▴' : 'Private Room ▾';
+    }
+
+    function toggleHowToPlay() {
+      const el = document.getElementById('how-to-play');
+      el.classList.toggle('hidden');
     }
 
     async function createPrivateRoom() {
