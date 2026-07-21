@@ -168,22 +168,8 @@ const PERSONALITIES = {
   'Anime Narrator': 'Sensei Ken. Over-the-top, intense shonen anime style. Screams move names, mentions inner potential, visual auras, and dramatic standoffs, shouting things like "NANI?!", "IMPOSSIBLE!", "That power is immense!".'
 };
 
-const MUTATORS = {
-  'Normal': 'Standard clash. Standard rules.',
-  'Double Damage 💥': 'ALL damage and counter-damage is multiplied by 2 (winner up to 80, loser up to 40). Massive stakes!',
-  'Opposite Day 🔄': 'Rules of power are INVERTED: the physically weaker, smaller, or less powerful entity wins! Compare them, and reward the weaker/less capable one.',
-  'Lava Floor 🌋': 'Both players take 15 points of fire damage at the start of the round from hot lava. The description must mention the hot lava environment.',
-  'Sudden Death 💀': 'If there is a winner, the loser takes 50 flat damage instantly. Counter-damage does not apply. If it is a tie, no damage is dealt to either.',
-  'Regen Rain 🌧️': 'The winner of this round HEALS their HP by 25 points instead of dealing damage. If a tie, both players heal 10 HP.'
-};
-
 function pickRandomPersonality() {
   const keys = Object.keys(PERSONALITIES);
-  return keys[Math.floor(Math.random() * keys.length)];
-}
-
-function pickRandomMutator() {
-  const keys = Object.keys(MUTATORS);
   return keys[Math.floor(Math.random() * keys.length)];
 }
 
@@ -210,7 +196,6 @@ function createRoom(type, p1Data) {
     phase: type === 'private' ? 'genre_select' : 'waiting',
     genre: null,
     judgePersonality: null,
-    mutator: 'Normal',
     p1: { ...p1Data, hp: 100, entity: null, ready: false, entityHidden: true, emoji: null, lastPollTime: now },
     p2: null,
     currentRound: 0,
@@ -286,7 +271,7 @@ function sanitizeRoom(room, uid) {
   const opponent = oppSide ? room[oppSide] : null;
   return {
     code: room.code, type: room.type, phase: room.phase, genre: room.genre,
-    judgePersonality: room.judgePersonality, mutator: room.mutator,
+    judgePersonality: room.judgePersonality,
     currentRound: room.currentRound,
     battleLog: room.battleLog.map(e => ({ ...e, eloChange: e.eloChange ? { ...e.eloChange } : undefined })),
     turnStartTime: room.turnStartTime,
@@ -336,14 +321,20 @@ function findOpenPublicRoom(myElo) {
 // User data helpers (backed by JSON file)
 // ============================================================
 
+const guestUsers = {};
+
 function findUserByUsername(username) {
   const users = loadUsers();
-  return Object.entries(users).find(([, u]) => u.username.toLowerCase() === username.toLowerCase());
+  const lower = username.toLowerCase();
+  const disk = Object.entries(users).find(([, u]) => u.username.toLowerCase() === lower);
+  if (disk) return disk;
+  const guest = Object.entries(guestUsers).find(([, u]) => u.username.toLowerCase() === lower);
+  return guest || null;
 }
 
 function getUserById(uid) {
   const users = loadUsers();
-  return users[uid] || null;
+  return users[uid] || guestUsers[uid] || null;
 }
 
 function createUser(uid, username, hash) {
@@ -353,6 +344,13 @@ function createUser(uid, username, hash) {
 }
 
 function updateUserElo(uid, eloDelta) {
+  if (guestUsers[uid]) {
+    const u = guestUsers[uid];
+    u.elo = eloDelta.newElo;
+    u.gamesPlayed = (u.gamesPlayed || 0) + 1;
+    if (eloDelta.isWinner) u.gamesWon = (u.gamesWon || 0) + 1;
+    return;
+  }
   const users = loadUsers();
   if (users[uid]) {
     users[uid].elo = eloDelta.newElo;
@@ -397,7 +395,6 @@ function startRoundTimer(room) {
     return;
   }
   room.genre = pickRandomGenre();
-  room.mutator = pickRandomMutator();
   room.turnStartTime = Date.now();
   broadcastRoomState(room);
   clearTimeout(room.roundTimer);
@@ -611,8 +608,6 @@ async function resolveBattle(room) {
   const e2 = room.p2.entity;
   const personalityName = room.judgePersonality || 'Hype Beast MC';
   const personalityStyle = PERSONALITIES[personalityName] || '';
-  const mutatorName = room.mutator || 'Normal';
-  const mutatorStyle = MUTATORS[mutatorName] || '';
 
   // Pre-check: auto-disqualify gibberish without calling AI
   const g1 = isGibberish(e1);
@@ -633,7 +628,6 @@ async function resolveBattle(room) {
 
   const prompt = `You are an AI battle judge for the genre "${genre}".
 Your judge personality is: ${personalityName}. ${personalityStyle}
-The active mutator for this round is: ${mutatorName}.
 
 Player 1 submitted: "${e1}"
 Player 2 submitted: "${e2}"
@@ -653,7 +647,6 @@ CRITICAL RULES (follow strictly in this order):
 - 🔴 GENRE CHECK — THIS IS THE MOST IMPORTANT RULE: Each entity MUST belong to the "${genre}" genre. If ANY entity is NOT a member of the "${genre}" category, IMMEDIATELY DISQUALIFY that player (40 damage, 0 counter-damage, they lose). Examples: "dog" is NOT an insect → disqualified. "car" is NOT an animal → disqualified. "laser gun" is NOT nature → disqualified. "pizza" is NOT a machine → disqualified. The genre is "${genre}" — if an entity doesn't fit, disqualify without hesitation. Do NOT compare power between entities that don't match the genre — just disqualify the mismatched one. If BOTH don't match the genre, it's a tie at 0 damage with a dismissive description.
 - GIBBERISH: If an entry is nonsense, made-up words (e.g. "blargle fargle", "zorp glorp", "dooper snooper"), random keyboard spam ("asdfghjkl"), or a phrase with 3+ rhyming silly words, DISQUALIFY that player: they take 40 damage, deal 0 counter-damage, lose, and the description is humorously dismissive. Even ONE real word mixed with nonsense is STILL gibberish.
 - INAPPROPRIATE: If an entry contains sexual, hateful, extremely violent, or NSFW content, IMMEDIATELY DISQUALIFY that player: they take 40 damage, deal 0 counter-damage, lose, emoji is "🔞", and description says "submission was inappropriate and removed" — NEVER describe the content itself.
-- MUTATOR: The active mutator "${mutatorName}" modifies the battle rules as follows: ${mutatorStyle}. Follow these mutator rules strictly when evaluating the winner, damage, and description. If you don't know how to apply it, revert to standard rules.
 - TIES: If both entities are equally matched (same power level, identical, or neither clearly beats the other), set winner to "tie", damage 0, counterDamage 0.
 - POWER COMPARISON: Use real-world logic, size, destructive capability, weapons, armor, and genre context. Compare ESTABLISHED power levels of named characters (e.g. Optimus Prime > sports car, T-Rex > chicken, laser cannon > deer). Prefixes like "super", "mega", "ultra", "hyper" on a normal thing (e.g. "super car") do NOT drastically increase power. A god-level entity (Zeus) beats a mortal (soldier) but the mortal can do ~5 counter-damage. Think step by step: who realistically wins, and by how much?
 - DAMAGE: Slight advantage → damage 10-15, counterDamage 5-10. Clear gap → damage 20-30, counterDamage 0-5. Utter domination → damage 35-40, counterDamage 0. Disqualification = 40. The loser always deals at least SOME counter-damage unless completely helpless.
@@ -670,7 +663,7 @@ CRITICAL RULES (follow strictly in this order):
           const completion = await client.chat.completions.create({
             model: AI_MODEL,
             messages: [
-              { role: 'system', content: `You are ${personalityName}, a strict AI battle judge. ${personalityStyle} The active mutator is: ${mutatorName} — ${mutatorStyle}. Your most important rule is GENRE CHECK — disqualify any entity that does not belong to the specified genre. Always respond in valid JSON only. Keep descriptions vivid (8-25 words, 1 sentence) and match your assigned personality. No stories, no markdown.` },
+              { role: 'system', content: `You are ${personalityName}, a strict AI battle judge. ${personalityStyle} Your most important rule is GENRE CHECK — disqualify any entity that does not belong to the specified genre. Always respond in valid JSON only. Keep descriptions vivid (8-25 words, 1 sentence) and match your assigned personality. No stories, no markdown.` },
               { role: 'user', content: prompt }
             ],
             response_format: { type: 'json_object' }
@@ -705,33 +698,9 @@ function cacheBattleResult(key, data) {
 }
 
 async function applyBattleResult(room, data) {
-  const mutator = room.mutator || 'Normal';
   const isTie = data.winner === 'tie';
   let damage = isTie ? 0 : Math.min(40, Math.max(1, data.damage || 10));
   let counterDamage = isTie ? 0 : Math.min(20, Math.max(0, data.counterDamage || 0));
-  let p1Heal = 0;
-  let p2Heal = 0;
-
-  // -- Apply Mutator modifications --
-  if (mutator === 'Double Damage 💥') {
-    damage = Math.min(80, damage * 2);
-    counterDamage = Math.min(40, counterDamage * 2);
-  } else if (mutator === 'Sudden Death 💀') {
-    if (!isTie) {
-      damage = 50;
-      counterDamage = 0;
-    }
-  } else if (mutator === 'Regen Rain 🌧️') {
-    if (isTie) {
-      p1Heal = 10;
-      p2Heal = 10;
-    } else {
-      if (data.winner === 'player1') p1Heal = 25;
-      else p2Heal = 25;
-      damage = 0;
-      counterDamage = 0;
-    }
-  }
 
   room.p1.emoji = data.player1Emoji || '❓';
   room.p2.emoji = data.player2Emoji || '❓';
@@ -739,14 +708,11 @@ async function applyBattleResult(room, data) {
   room.lastEntityP2 = room.p2.entity;
 
   if (isTie) {
-    if (p1Heal > 0) room.p1.hp = Math.min(100, room.p1.hp + p1Heal);
-    if (p2Heal > 0) room.p2.hp = Math.min(100, room.p2.hp + p2Heal);
-    if (mutator === 'Lava Floor 🌋') { room.p1.hp -= 15; room.p2.hp -= 15; if (room.p1.hp < 0) room.p1.hp = 0; if (room.p2.hp < 0) room.p2.hp = 0; }
     return {
       round: ++room.currentRound, winner: 'tie', winnerUsername: '', loserUsername: '',
       player1Emoji: data.player1Emoji || '❓', player2Emoji: data.player2Emoji || '❓',
       p1Entity: room.lastEntityP1, p2Entity: room.lastEntityP2,
-      damage: 0, counterDamage: 0, p1Heal, p2Heal, winnerHp: room.p1.hp, loserHp: room.p2.hp,
+      damage: 0, counterDamage: 0, p1Heal: 0, p2Heal: 0, winnerHp: room.p1.hp, loserHp: room.p2.hp,
       description: data.description || 'A perfectly matched battle! Neither prevails.',
     };
   }
@@ -756,9 +722,6 @@ async function applyBattleResult(room, data) {
   const winner = p1Wins ? room.p1 : room.p2;
   loser.hp -= damage;
   winner.hp -= counterDamage;
-  if (p1Heal > 0) room.p1.hp = Math.min(100, room.p1.hp + p1Heal);
-  if (p2Heal > 0) room.p2.hp = Math.min(100, room.p2.hp + p2Heal);
-  if (mutator === 'Lava Floor 🌋') { room.p1.hp -= 15; room.p2.hp -= 15; }
   if (loser.hp < 0) loser.hp = 0;
   if (winner.hp < 0) winner.hp = 0;
   if (room.p1.hp < 0) room.p1.hp = 0;
@@ -769,7 +732,7 @@ async function applyBattleResult(room, data) {
     winnerUsername: winner.username, loserUsername: loser.username,
     player1Emoji: data.player1Emoji || '❓', player2Emoji: data.player2Emoji || '❓',
     p1Entity: room.lastEntityP1, p2Entity: room.lastEntityP2,
-    damage, counterDamage, p1Heal, p2Heal, winnerHp: winner.hp, loserHp: loser.hp,
+    damage, counterDamage, p1Heal: 0, p2Heal: 0, winnerHp: winner.hp, loserHp: loser.hp,
     description: data.description || 'An epic battle ensued!',
   };
   // Censor entities disqualified for NSFW/inappropriate content (40 damage, 0 counter)
@@ -785,7 +748,6 @@ async function applyBattleResult(room, data) {
     room.phase = 'game_over';
     clearTimeout(room.roundTimer);
     clearTimeout(room.advanceTimer);
-    // Both died: determine true winner by who has more HP (>0 preferred)
     const bothDead = loser.hp <= 0 && winner.hp <= 0;
     const eloWinner = !bothDead && loser.hp <= 0 ? winner : (!bothDead && winner.hp <= 0 ? loser : winner);
     const eloLoser = eloWinner === winner ? loser : winner;
@@ -875,7 +837,7 @@ app.post('/api/guest-login', rateLimit(10, 60000), (req, res) => {
       guestName = 'Player_' + num;
     } while (findUserByUsername(guestName));
     const uid = uuidv4();
-    createUser(uid, guestName, null);
+    guestUsers[uid] = { username: guestName, password: null, elo: 1000, gamesPlayed: 0, gamesWon: 0 };
     const token = jwt.sign({ uid, username: guestName }, JWT_SECRET, { expiresIn: '30d' });
     res.json({ token, uid, username: guestName });
   } catch (e) {

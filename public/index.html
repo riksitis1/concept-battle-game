@@ -505,7 +505,7 @@
       #battle-countdown { font-size: 13px !important; }
       #btn-resign { font-size: 13px !important; padding: 8px 14px !important; }
 
-      /* Judge/mutator bar */
+      /* Judge bar */
       #screen-battle > div:nth-child(2) {
         font-size: 10px !important;
         padding: 3px 8px !important;
@@ -638,7 +638,6 @@
       #genre-splash-name { font-size: 3rem !important; }
       #genre-splash-icon { font-size: 4rem !important; }
       #genre-splash-round { font-size: 0.7rem !important; }
-      #genre-splash-mutator { font-size: 0.6rem !important; }
 
       /* Waiting / Matching */
       #screen-waiting-room .letter-avatar { width: 48px !important; height: 48px !important; font-size: 1rem !important; }
@@ -706,7 +705,7 @@
         <div class="text-center mb-6">
           <div class="text-5xl mb-2" style="filter: drop-shadow(0 0 30px rgba(99,102,241,0.3));">⚔️</div>
           <h2 class="text-2xl font-extrabold tracking-tight" style="background: linear-gradient(135deg, #818cf8 0%, #c4b5fd 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">Prompt Clash</h2>
-          <p class="text-xs text-indigo-300/70 mt-1 leading-relaxed max-w-xs mx-auto">Type any entity and an AI judge decides who wins. Each round brings a random genre & mutator — adapt to survive!</p>
+          <p class="text-xs text-indigo-300/70 mt-1 leading-relaxed max-w-xs mx-auto">Type any entity and an AI judge decides who wins. Each round brings a random genre — adapt to survive!</p>
         </div>
         <div id="auth-error" class="text-red-400 text-sm mb-3 text-center hidden px-3 py-2 rounded-lg" style="background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.1);"></div>
         <div class="space-y-3">
@@ -747,10 +746,9 @@
         <div id="how-to-play" class="hidden animate-slide-down text-xs text-indigo-300/70 leading-relaxed space-y-3 px-4 py-4 rounded-xl" style="background: rgba(20, 20, 50, 0.5); border: 1px solid rgba(99,102,241,0.06);">
           <p><strong class="text-indigo-200">1. Match</strong> — Find or create a room to battle another player.</p>
           <p><strong class="text-indigo-200">2. Genre</strong> — Each round starts with a random <span class="text-indigo-200">genre</span> (e.g. Animals, Sci-Fi). Your entity must fit it!</p>
-          <p><strong class="text-indigo-200">3. Mutator</strong> — A random <span class="text-amber-300">mutator</span> (Double Damage, Lava Floor, etc.) changes the rules every round.</p>
-          <p><strong class="text-indigo-200">4. Submit</strong> — Type any creature, object, or character that fits the genre. Be creative!</p>
-          <p><strong class="text-indigo-200">5. Judge</strong> — An <span class="text-indigo-200">AI narrator</span> with a unique personality judges who wins and by how much.</p>
-          <p><strong class="text-indigo-200">6. Survive</strong> — First to reach 0 HP loses. Disqualified entries deal massive damage to themselves.</p>
+          <p><strong class="text-indigo-200">3. Submit</strong> — Type any creature, object, or character that fits the genre. Be creative!</p>
+          <p><strong class="text-indigo-200">4. Judge</strong> — An <span class="text-indigo-200">AI narrator</span> with a unique personality judges who wins and by how much.</p>
+          <p><strong class="text-indigo-200">5. Survive</strong> — First to reach 0 HP loses. Disqualified entries deal massive damage to themselves.</p>
         </div>
 
         <div class="animate-fade-in-up flex flex-col gap-4" style="animation-delay: 0.15s;">
@@ -937,7 +935,6 @@
         <div class="text-8xl md:text-9xl mb-5" id="genre-splash-icon" style="filter: drop-shadow(0 0 50px rgba(99,102,241,0.3));">⚔️</div>
         <div class="text-xs md:text-sm text-indigo-400/70 uppercase tracking-[0.3em] mb-3 font-semibold">Battle Genre</div>
         <div id="genre-splash-name" class="text-6xl md:text-8xl font-extrabold tracking-tight leading-tight mb-4" style="background: linear-gradient(135deg, #818cf8 0%, #c4b5fd 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; filter: drop-shadow(0 0 30px rgba(99,102,241,0.15));"></div>
-        <div id="genre-splash-mutator" class="hidden text-xs md:text-sm text-amber-300 font-bold tracking-[0.2em] uppercase px-4 py-2 rounded-xl border border-amber-500/20" style="background: rgba(245, 158, 11, 0.08);"></div>
       </div>
     </div>
 
@@ -955,15 +952,11 @@
         <button id="btn-resign" onclick="resignBattle()" class="text-xs font-medium px-2.5 py-1.5 rounded-lg transition-all" style="color: rgba(239, 68, 68, 0.6); background: rgba(239, 68, 68, 0.06); border: 1px solid rgba(239, 68, 68, 0.08);" onmouseover="this.style.background='rgba(239,68,68,0.12)'; this.style.color='#ef4444'" onmouseout="this.style.background='rgba(239,68,68,0.06)'; this.style.color='rgba(239,68,68,0.6)'">✋ Resign</button>
       </div>
 
-      <!-- BATTLE SUB-HEADER: JUDGE & MUTATOR -->
+      <!-- BATTLE SUB-HEADER: JUDGE -->
       <div class="flex items-center justify-between text-[11px] px-3 py-1.5 rounded-xl shrink-0" style="background: rgba(15, 15, 35, 0.5); border: 1px solid rgba(99, 102, 241, 0.04); margin-top: -4px;">
         <span class="text-indigo-300 font-medium flex items-center gap-1.5">
           👨‍⚖️ Judge: <span id="battle-judge" class="font-semibold text-indigo-100">???</span>
           <span class="help-tip" title="An AI narrator with a unique personality judges each round. Every match gets a different judge who writes fight descriptions in their own style.">ⓘ</span>
-        </span>
-        <span class="text-indigo-300 font-medium flex items-center gap-1.5">
-          🌀 Mutator: <span id="battle-mutator" class="font-semibold text-amber-300">Normal</span>
-          <span class="help-tip" title="Each round has a random mutator that changes the rules: Double Damage x2, Opposite Day (weakest wins), Lava Floor (both burn), Sudden Death (50 DMG), or Regen Rain (healing).">ⓘ</span>
         </span>
       </div>
 
@@ -1123,21 +1116,13 @@
       }
     }
 
-    function showGenreSplash(genre, round, mutator) {
+    function showGenreSplash(genre, round) {
       const splash = document.getElementById('genre-splash');
       const nameEl = document.getElementById('genre-splash-name');
       const iconEl = document.getElementById('genre-splash-icon');
       const roundEl = document.getElementById('genre-splash-round');
-      const mutatorEl = document.getElementById('genre-splash-mutator');
       nameEl.textContent = genre;
       roundEl.textContent = round ? 'Round ' + round : '';
-      
-      if (mutator && mutator !== 'Normal') {
-        mutatorEl.textContent = `MUTATOR: ${mutator.toUpperCase()}`;
-        mutatorEl.classList.remove('hidden');
-      } else {
-        mutatorEl.classList.add('hidden');
-      }
 
       const icons = { 'Animals':'🦁','Machines':'⚙️','Mythical Creatures':'🐉','Elements':'🔥','Cosmic':'🌌','Fantasy':'🧙','Sci-Fi':'🚀','Food':'🍔','Sports':'⚽','Nature':'🌿','Magic':'🔮','Technology':'💻','Underwater':'🐠','Dinosaurs':'🦕','Superheroes':'🦸','Weather':'⛈️','Robots':'🤖','Crystals & Gems':'💎','Insects':'🐛','Cars & Vehicles':'🚗','Random':'🎲' };
       iconEl.textContent = icons[genre] || '⚔️';
@@ -1836,12 +1821,12 @@
           break;
         case 'submitting':
           (async () => {
-            await showGenreSplash(state.genre || 'Battle', (state.currentRound || 0) + 1, state.mutator);
+            await showGenreSplash(state.genre || 'Battle', (state.currentRound || 0) + 1);
             showScreen('screen-battle');
             document.getElementById('battle-round').textContent = (state.currentRound || 0) + 1;
             document.getElementById('battle-genre').textContent = state.genre || '???';
             
-            // Update AI Judge and Mutator displays
+            // Update AI Judge display
             const judgeIcons = {
               'Hype Beast MC': '🎤 Hype Beast MC',
               'Shakespearean Bard': '📜 Sir Alistair',
@@ -1850,7 +1835,6 @@
               'Anime Narrator': '⚡ Sensei Ken'
             };
             document.getElementById('battle-judge').textContent = judgeIcons[state.judgePersonality] || '👨‍⚖️ AI Judge';
-            document.getElementById('battle-mutator').textContent = state.mutator || 'Normal';
 
             turnStartTime = state.turnStartTime || Date.now();
             {
