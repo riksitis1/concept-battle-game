@@ -1241,13 +1241,15 @@
                 });
                 if (stateRes.ok) {
                   const state = await stateRes.json();
-                  if (state.phase !== 'waiting' && state.phase !== 'genre_select') {
+                  if (state.phase !== 'game_over') {
                     playerSide = state.me?.side;
                     lastPhase = state.phase;
                     lastLogLen = state.battleLog?.length || 0;
                     onPhaseChange(state);
-                    updateBattleUI(state);
-                    updateCountdown(state);
+                    if (state.phase === 'submitting' || state.phase === 'resolving' || state.phase === 'round_result') {
+                      updateBattleUI(state);
+                      updateCountdown(state);
+                    }
                     startPolling();
                     return;
                   }
@@ -1809,6 +1811,7 @@
     function onPhaseChange(state) {
       switch (state.phase) {
         case 'waiting':
+          showScreen('screen-waiting-room');
           updateWaitingRoom();
           break;
         case 'genre_select':
